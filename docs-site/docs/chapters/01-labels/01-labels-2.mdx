@@ -1,0 +1,349 @@
+---
+sidebar_position: 2
+slug: /chapters/labels/dashboard
+title: "Part 2: Dashboard Labels"
+description: "Test heading structure and merged semantics on the Dashboard"
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Part 2: Dashboard Labels
+
+In Part 1, you tested the login screen's text fields and button. Now you will apply the same red-green approach to the dashboard screen, testing three different label concerns:
+
+1. **Heading structure** — the greeting text should be marked as a heading so screen reader users can navigate by headings.
+2. **Merged semantics** — account cards should announce as a single coherent unit, not a jumble of separate text nodes.
+3. **Decorative icon exclusion** — icons that repeat information already in the text should be hidden from screen readers.
+
+---
+
+## Test 1: Greeting as a Heading
+
+Screen reader users rely on heading navigation to jump between sections of a page. If a visual heading is not marked as a semantic heading, it becomes invisible to this navigation pattern.
+
+The dashboard greets the user with "Good morning, Alex Johnson" in a bold, large font. Visually, it is clearly a heading. Semantically, it is just text.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Why This Matters</div>
+  <p>Heading navigation is one of the most-used screen reader features. A VoiceOver user can swipe up/down with the rotor set to "Headings" to jump between sections. A TalkBack user can use heading navigation gestures. If your headings are not semantically marked, these users have to swipe through every element on the page to find what they need.</p>
+</div>
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Add the following group to your <code>test/accessibility/labels_test.dart</code> file (after the login screen group).</p>
+</div>
+
+<Tabs>
+  <TabItem value="failing" label="🔴 Failing Test" default>
+
+```dart title="test/accessibility/labels_test.dart (add to existing file)"
+import 'dart:ui'; // needed for SemanticsFlag
+
+group('Dashboard screen — semantic labels', () {
+  late SemanticsHandle handle;
+
+  testWidgets('greeting is marked as a heading', (tester) async {
+    handle = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: DashboardScreen()),
+      ),
+    );
+
+    final greeting = find.textContaining('Good morning');
+    expect(greeting, findsOneWidget);
+
+    final semantics = tester.getSemantics(greeting);
+
+    // The greeting should be announced as a heading
+    expect(
+      semantics.hasFlag(SemanticsFlag.isHeader),
+      isTrue,
+      reason: 'Greeting should be marked as a heading for screen readers',
+    );
+
+    handle.dispose();
+  });
+});
+```
+
+  </TabItem>
+  <TabItem value="passing" label="🟢 Passing (Fixed Code)">
+
+```dart title="lib/screens/dashboard_screen.dart (fixed greeting)"
+// Wrap the greeting Text in a Semantics widget with header: true
+// highlight-start
+Semantics(
+  header: true,
+  child: Text(
+    'Good morning, ${mockUser.name}',
+    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+          fontWeight: FontWeight.bold,
+        ),
+  ),
+),
+// highlight-end
+```
+
+The `Semantics(header: true)` wrapper tells the framework to set the `isHeader` flag on this node. Screen readers will now announce "Good morning, Alex Johnson, heading" and include it in heading navigation.
+
+  </TabItem>
+</Tabs>
+
+### Understanding `tester.getSemantics()` and `SemanticsFlag`
+
+`tester.getSemantics(finder)` returns the `SemanticsNode` for the widget matched by the finder. A `SemanticsNode` contains all the accessibility data for that widget: its label, value, hint, flags, and actions.
+
+The `hasFlag(SemanticsFlag.isHeader)` check asks: "Is this node marked as a heading in the semantics tree?" The `SemanticsFlag` enum contains flags for many accessibility properties — `isHeader`, `isButton`, `isTextField`, `isImage`, and more.
+
+Run the test:
+
+```bash title="Terminal"
+flutter test test/accessibility/labels_test.dart
+```
+
+The heading test fails because the greeting `Text` widget has no `Semantics(header: true)` wrapper.
+
+---
+
+## Test 2: Merged Card Semantics
+
+Each account card in the dashboard contains multiple text nodes: the account name ("Current Account") and the balance ("£4,825.67"). Without merged semantics, a screen reader announces each one separately:
+
+> "Current Account" ... "£4,825.67" ... "chevron right"
+
+That is three separate swipes to understand one card. With `MergeSemantics`, the card becomes a single node:
+
+> "Current Account, £4,825.67"
+
+One swipe. One coherent announcement.
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Add this test to the Dashboard group.</p>
+</div>
+
+<Tabs>
+  <TabItem value="failing" label="🔴 Failing Test" default>
+
+```dart title="test/accessibility/labels_test.dart (add to Dashboard group)"
+testWidgets('account card has merged semantics with descriptive label',
+    (tester) async {
+  handle = tester.ensureSemantics();
+
+  await tester.pumpWidget(
+    const ProviderScope(
+      child: MaterialApp(home: DashboardScreen()),
+    ),
+  );
+
+  // Look for a single semantics node that combines
+  // the account name and balance
+  final cardFinder = find.bySemanticsLabel(
+    RegExp(r'Current Account.*£4,825\.67'),
+  );
+  expect(
+    cardFinder,
+    findsOneWidget,
+    reason:
+        'Account card should have merged semantics combining '
+        'name and balance into a single announcement',
+  );
+
+  handle.dispose();
+});
+```
+
+  </TabItem>
+  <TabItem value="passing" label="🟢 Passing (Fixed Code)">
+
+```dart title="lib/widgets/account_card.dart (fixed with MergeSemantics)"
+@override
+Widget build(BuildContext context) {
+  return Card(
+    // highlight-start
+    child: MergeSemantics(
+      child: InkWell(
+    // highlight-end
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              ExcludeSemantics(
+                child: Icon(
+                  _iconForType(account.type),
+                  size: 32,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      account.name,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${account.balance < 0 ? '-' : ''}£${account.balance.abs().toStringAsFixed(2)}',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              // highlight-next-line
+              const ExcludeSemantics(
+                child: Icon(Icons.chevron_right, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+```
+
+`MergeSemantics` wraps the `InkWell` and merges all descendant semantics nodes into a single announcement. The screen reader now reads the entire card as one unit.
+
+  </TabItem>
+</Tabs>
+
+### Understanding `find.bySemanticsLabel` with RegExp
+
+When you pass a `RegExp` to `find.bySemanticsLabel`, it matches against the full label string of each semantics node. The pattern `r'Current Account.*£4,825\.67'` looks for a single node whose label contains both the account name and balance — which only exists if the card's children have been merged into one semantic unit.
+
+Without `MergeSemantics`, the account name and balance live in separate semantics nodes. Neither one matches the combined pattern, so the finder returns nothing and the test fails.
+
+---
+
+## Test 3: Decorative Icon Exclusion
+
+Each account card has an icon indicating the account type — a wallet for current accounts, a piggy bank for savings, a credit card for credit. These icons are purely decorative: they repeat information that is already conveyed by the account name text.
+
+When decorative icons are not excluded from semantics, the screen reader announces them before the card content. This creates noise and slows down navigation.
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Add this test to the Dashboard group.</p>
+</div>
+
+<Tabs>
+  <TabItem value="failing" label="🔴 Failing Test" default>
+
+```dart title="test/accessibility/labels_test.dart (add to Dashboard group)"
+testWidgets('decorative icons are excluded from semantics', (tester) async {
+  handle = tester.ensureSemantics();
+
+  await tester.pumpWidget(
+    const ProviderScope(
+      child: MaterialApp(home: DashboardScreen()),
+    ),
+  );
+
+  // The wallet icon is decorative — it should have
+  // no semantics node in the tree
+  final walletIcon = find.byIcon(Icons.account_balance_wallet);
+  expect(walletIcon, findsOneWidget);
+
+  bool iconExcludedFromSemantics = false;
+  try {
+    tester.getSemantics(walletIcon);
+  } on StateError {
+    // Good — no semantics node means the icon is excluded
+    iconExcludedFromSemantics = true;
+  }
+
+  expect(
+    iconExcludedFromSemantics,
+    isTrue,
+    reason:
+        'Decorative account-type icons should be excluded from the '
+        'semantics tree with ExcludeSemantics',
+  );
+
+  handle.dispose();
+});
+```
+
+  </TabItem>
+  <TabItem value="passing" label="🟢 Passing (Fixed Code)">
+
+```dart title="lib/widgets/account_card.dart (fixed icon)"
+// Wrap the decorative icon in ExcludeSemantics
+// highlight-start
+ExcludeSemantics(
+  child: Icon(
+    _iconForType(account.type),
+    size: 32,
+    color: AppColors.primary,
+  ),
+),
+// highlight-end
+```
+
+`ExcludeSemantics` removes the wrapped widget and all its descendants from the semantics tree entirely. The screen reader will never encounter the icon.
+
+  </TabItem>
+</Tabs>
+
+### Understanding `ExcludeSemantics`
+
+`ExcludeSemantics` is a Flutter widget that removes its child subtree from the semantics tree. Use it when:
+
+- An icon is purely decorative and repeats information in adjacent text
+- An image is decorative (e.g., a background pattern)
+- A widget provides no useful information to assistive technology
+
+The test verifies this by calling `tester.getSemantics()` on the icon widget. If `ExcludeSemantics` wraps the icon, `getSemantics` throws a `StateError` because the node does not exist in the semantics tree. Without the wrapper, the call succeeds — meaning the icon is leaking into semantics.
+
+### Run All Dashboard Tests
+
+```bash title="Terminal"
+flutter test test/accessibility/labels_test.dart
+```
+
+All three dashboard tests should fail against the current code. Apply the fixes shown in the "Passing" tabs, then run again to see them go green.
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You now have six tests covering both the Login and Dashboard screens:</p>
+  <ul>
+    <li>Email field — persistent label via <code>labelText</code></li>
+    <li>Password field — persistent label via <code>labelText</code></li>
+    <li>Submit button — descriptive label "Sign in"</li>
+    <li>Greeting — marked as a heading</li>
+    <li>Account cards — merged semantics</li>
+    <li>Decorative icons — excluded from semantics</li>
+  </ul>
+</div>
+
+---
+
+## Summary
+
+| Bug | Widget | Fix | Test Technique |
+|-----|--------|-----|---------------|
+| No persistent label on fields | `TextField` | Change `hintText` to `labelText` | `tester.widget<TextField>()` to inspect `decoration.labelText` |
+| Vague button text | `ElevatedButton` | Change "Go" to "Sign in" (or add `Semantics(label:)`) | `find.bySemanticsLabel('Sign in')` |
+| Heading not marked | `Text` | Wrap with `Semantics(header: true)` | `tester.getSemantics()` + `hasFlag(SemanticsFlag.isHeader)` |
+| Fragmented card reading | `AccountCard` | Wrap card content with `MergeSemantics` | `find.bySemanticsLabel(RegExp(...))` for combined label |
+| Decorative icons in semantics | `Icon` | Wrap with `ExcludeSemantics` | `tester.getSemantics()` throws `StateError` when excluded |
+
+---
+
+## What's Next
+
+Labels are the foundation of accessibility. In [Chapter 2: Roles and States](/chapters/roles-states), you will test whether interactive elements announce their type and current state — buttons that do not say "button", toggles that do not announce "on" or "off", and links that are invisible to navigation.
+
+Before moving on, take the [Chapter 1 Quiz](/chapters/labels/quiz) to check your understanding.

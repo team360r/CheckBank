@@ -1,0 +1,78 @@
+---
+sidebar_position: 3
+slug: /chapters/labels/quiz
+title: "Quiz: Labels Under the Microscope"
+---
+
+import { Quiz, QuizQuestion } from '@site/src/components/Quiz';
+
+# Quiz: Labels Under the Microscope
+
+<Quiz chapterId="ch01">
+  <QuizQuestion
+    question="What does matchesSemantics(label:) assert about a widget?"
+    options={[
+      "That the widget's visible text matches the given string",
+      "That the widget's semantic label — the text announced by screen readers — matches the given string",
+      "That the widget has a tooltip matching the given string",
+      "That the widget's key matches the given string"
+    ]}
+    correctIndex={1}
+    explanation="matchesSemantics(label:) checks the semantic label of a widget's SemanticsNode — the exact text that assistive technology announces to users. This is different from the visible text, which is what sighted users see on screen."
+  />
+  <QuizQuestion
+    question="What is the key difference between hintText and labelText in Flutter's InputDecoration?"
+    options={[
+      "hintText is for passwords, labelText is for email fields",
+      "hintText appears below the field, labelText appears above it",
+      "hintText disappears when the user types — labelText persists as a floating label and a permanent semantic label",
+      "There is no practical difference — they are interchangeable"
+    ]}
+    correctIndex={2}
+    explanation="hintText is a visual placeholder that vanishes once text is entered. labelText starts as placeholder text but floats above the field when focused, remaining visible and staying in the semantics tree permanently. For accessibility, labelText is the correct choice because it gives screen reader users a persistent way to identify the field."
+  />
+  <QuizQuestion
+    question="What does tester.getSemantics(finder) return?"
+    options={[
+      "A String containing the widget's label",
+      "A SemanticsNode containing all accessibility data for the widget — label, value, flags, and actions",
+      "A boolean indicating whether the widget has semantics enabled",
+      "A list of all widgets in the semantics tree"
+    ]}
+    correctIndex={1}
+    explanation="tester.getSemantics() returns the SemanticsNode for the widget matched by the finder. A SemanticsNode contains the label, value, hint, flags (like isHeader, isButton, isTextField), and actions (like tap, scroll) — everything assistive technology needs to describe the widget to the user."
+  />
+  <QuizQuestion
+    question="When should you use MergeSemantics?"
+    options={[
+      "When you want to hide a widget from screen readers entirely",
+      "When multiple child widgets should be announced as a single unit instead of separate nodes",
+      "When you need to add a label to a widget that does not have one",
+      "When you want to change the order screen readers traverse widgets"
+    ]}
+    correctIndex={1}
+    explanation="MergeSemantics combines the semantics of all its descendant widgets into a single node. Use it when a group of widgets (like an account name and balance in a card) should be read as one coherent announcement rather than separate, fragmented pieces."
+  />
+  <QuizQuestion
+    question="What does ExcludeSemantics do, and when should you use it?"
+    options={[
+      "It hides a widget visually but keeps it in the semantics tree",
+      "It removes a widget and all its descendants from the semantics tree — use it for decorative elements that add noise for screen reader users",
+      "It marks a widget as important for screen readers to announce first",
+      "It disables tap actions on a widget for accessibility users"
+    ]}
+    correctIndex={1}
+    explanation="ExcludeSemantics removes the wrapped widget from the semantics tree entirely. Screen readers will never encounter it. Use it for decorative icons, background images, and any visual element that repeats information already available in adjacent text. Without it, decorative elements create noise that slows down navigation."
+  />
+  <QuizQuestion
+    question="A Flutter test calls find.bySemanticsLabel('Sign in') and it returns findsNothing. What does this tell you?"
+    options={[
+      "The 'Sign in' button is not visible on screen",
+      "There is no widget in the semantics tree whose label is 'Sign in' — screen reader users cannot find a 'Sign in' action",
+      "The semantics tree has not been enabled for this test",
+      "The widget exists but is disabled"
+    ]}
+    correctIndex={1}
+    explanation="find.bySemanticsLabel searches the semantics tree for nodes matching the given label. If it returns findsNothing, no widget has that semantic label. This means a screen reader user swiping through the interface will never hear 'Sign in' — even if a button with that visual text exists, it may have a different (or missing) semantic label."
+  />
+</Quiz>

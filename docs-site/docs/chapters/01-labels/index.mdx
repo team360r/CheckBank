@@ -5,12 +5,303 @@ title: "Chapter 1: Labels Under the Microscope"
 description: "Test and fix missing semantic labels on Login and Dashboard"
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Chapter 1: Labels Under the Microscope
 
-> *Coming soon*
+> *"The most common accessibility failure is the simplest: an element that does not say what it is."*
+> — Accessibility testing proverb
 
 **Estimated time:** ~25 minutes | **Focus:** Login & Dashboard | **Branch:** `chapter-1-labels`
 
 ---
 
-Content for this chapter is being written. Check back soon!
+## Why Labels Matter
+
+A semantic label is how assistive technology identifies an interactive element. When a screen reader user swipes to a text field, the label is what gets announced: "Email address, text field." Without a label, the announcement is just: "Edit box."
+
+That single missing word is the difference between a usable form and a guessing game.
+
+The WCAG Success Criterion that governs this is **1.3.1 — Info and Relationships**: information, structure, and relationships conveyed through presentation must be programmatically determinable. If a sighted user can see that a text field is for email, a screen reader user must be told the same thing through semantics.
+
+In Flutter, this means every interactive widget needs a semantic label — either through its own properties (like `InputDecoration.labelText`) or through an explicit `Semantics` wrapper.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Why This Matters</div>
+  <p>Missing labels are the most common accessibility failure in mobile apps. They affect every screen reader user on every platform. If you fix nothing else, fix labels first.</p>
+</div>
+
+---
+
+## Part 1: Testing the Login Screen
+
+In Chapter 0, the smoke test confirmed the login screen renders. Now we test whether its interactive elements actually identify themselves to assistive technology.
+
+We will write three tests:
+1. The email field should have a persistent label (not just a hint)
+2. The password field should have a persistent label (not just a hint)
+3. The submit button should have a descriptive label ("Sign in", not "Go")
+
+### The `hintText` vs `labelText` Problem
+
+Flutter's `TextField` has two decoration properties that look similar but behave very differently for accessibility:
+
+- **`hintText`** — placeholder text that appears inside the field when it is empty. Once the user starts typing, it vanishes. It is a visual hint, not a reliable semantic label.
+- **`labelText`** — a label that starts inside the field but floats above it when the user types. It persists visually and semantically. Screen readers always have something to announce.
+
+The login screen uses `hintText` only. That means the moment a user starts typing, the field loses its identity. A screen reader user editing the email field has no way to confirm which field they are in.
+
+### Writing the Tests
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Create <code>test/accessibility/labels_test.dart</code> with the test code below. These tests will <strong>fail</strong> against the current code — that is the point. You are writing the "red" phase of red-green-refactor.</p>
+</div>
+
+<Tabs>
+  <TabItem value="failing" label="🔴 Failing Test" default>
+
+```dart title="test/accessibility/labels_test.dart"
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:checkbank/screens/login_screen.dart';
+import 'package:checkbank/screens/dashboard_screen.dart';
+
+void main() {
+  group('Login screen — semantic labels', () {
+    late SemanticsHandle handle;
+
+    testWidgets('email field has a floating label (not just a hint)',
+        (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      // Find the email TextField by its decoration
+      final emailField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == 'Email address',
+      );
+      expect(emailField, findsOneWidget);
+
+      // Check that the TextField uses labelText — not just hintText
+      final textField = tester.widget<TextField>(emailField);
+      expect(
+        textField.decoration?.labelText,
+        isNotNull,
+        reason:
+            'Email field should use InputDecoration.labelText for a '
+            'persistent semantic label, not just hintText',
+      );
+
+      handle.dispose();
+    });
+
+    testWidgets('password field has a floating label (not just a hint)',
+        (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      final passwordField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == 'Password',
+      );
+      expect(passwordField, findsOneWidget);
+
+      final textField = tester.widget<TextField>(passwordField);
+      expect(
+        textField.decoration?.labelText,
+        isNotNull,
+        reason:
+            'Password field should use InputDecoration.labelText for a '
+            'persistent semantic label, not just hintText',
+      );
+
+      handle.dispose();
+    });
+
+    testWidgets('submit button has a descriptive label', (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      // The button says "Go" — we expect "Sign in"
+      final signInButton = find.bySemanticsLabel('Sign in');
+      expect(
+        signInButton,
+        findsOneWidget,
+        reason:
+            'Submit button should have a descriptive semantic label '
+            '"Sign in", not just "Go"',
+      );
+
+      handle.dispose();
+    });
+  });
+}
+```
+
+  </TabItem>
+  <TabItem value="passing" label="🟢 Passing (Fixed Code)">
+
+After running the tests and seeing them fail, here is the fixed `login_screen.dart`. The changes are small but significant:
+
+```dart title="lib/screens/login_screen.dart (fixed)"
+// FIX 1: Change hintText to labelText on the email field
+TextField(
+  controller: _emailController,
+  keyboardType: TextInputType.emailAddress,
+  decoration: const InputDecoration(
+    // highlight-next-line
+    labelText: 'Email address',
+  ),
+),
+
+// FIX 2: Change hintText to labelText on the password field
+TextField(
+  controller: _passwordController,
+  obscureText: true,
+  decoration: const InputDecoration(
+    // highlight-next-line
+    labelText: 'Password',
+  ),
+),
+
+// FIX 3: Add a Semantics wrapper with a descriptive label
+Semantics(
+  label: 'Sign in',
+  child: SizedBox(
+    width: double.infinity,
+    child: ElevatedButton(
+      onPressed: _submit,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+      ),
+      // highlight-next-line
+      child: const Text('Sign in'),
+    ),
+  ),
+),
+```
+
+**What changed:**
+
+1. **Email field:** `hintText: 'Email address'` became `labelText: 'Email address'`. The label now floats above the field when focused and remains in the semantics tree permanently.
+2. **Password field:** Same change — `hintText` to `labelText`.
+3. **Submit button:** The text changed from "Go" to "Sign in", giving the button a descriptive label that tells screen reader users what it does.
+
+  </TabItem>
+</Tabs>
+
+### Walking Through the Test Code
+
+Let us unpack what each test does:
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title"><code>tester.ensureSemantics()</code></div>
+
+Every accessibility test starts by enabling the semantics tree. Without this call, Flutter does not build the accessibility data that screen readers rely on. The returned `SemanticsHandle` must be disposed at the end of the test.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title"><code>find.byWidgetPredicate</code></div>
+
+We locate the email TextField by checking its `decoration.hintText`. This is a widget-level finder — it finds the actual `TextField` widget so we can inspect its properties.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title"><code>tester.widget&lt;TextField&gt;(finder)</code></div>
+
+Once we have a finder, `tester.widget<T>()` gives us the actual widget instance. We can then inspect `decoration?.labelText` to check whether the developer used `labelText` (accessible) or just `hintText` (fragile).
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">4</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title"><code>find.bySemanticsLabel('Sign in')</code></div>
+
+For the button test, we use `find.bySemanticsLabel` to search the semantics tree for a node labelled "Sign in". This is a semantics-level finder — it queries what a screen reader would announce, not what appears on screen. The current button says "Go", so this finder returns nothing and the test fails.
+
+  </div>
+</div>
+
+### Run the Tests
+
+```bash title="Terminal"
+flutter test test/accessibility/labels_test.dart
+```
+
+You should see all three tests fail:
+
+```
+00:00 +0 -3: Some tests failed.
+```
+
+That is exactly right. The tests describe what the code *should* do. The code does not do it yet. Red phase complete.
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You have three failing tests for the login screen's semantic labels. The email field, password field, and submit button all fail to provide proper labels for assistive technology.</p>
+</div>
+
+### Apply the Fix
+
+Switch to the "Passing (Fixed Code)" tab above and apply the changes to `lib/screens/login_screen.dart`. Then run the tests again:
+
+```bash title="Terminal"
+flutter test test/accessibility/labels_test.dart
+```
+
+All three login tests should now pass. Green phase complete.
+
+---
+
+## Key Concepts
+
+Before moving on to the Dashboard in Part 2, let us consolidate what you have learned:
+
+| Concept | What It Does |
+|---------|-------------|
+| `InputDecoration.labelText` | Provides a persistent semantic label that floats above the field — visible and accessible at all times |
+| `InputDecoration.hintText` | A visual placeholder that disappears when the user types — unreliable for screen readers |
+| `find.bySemanticsLabel(label)` | Searches the semantics tree for a node with the given label — tests what assistive technology actually announces |
+| `tester.widget<T>(finder)` | Gets the actual widget instance from a finder, letting you inspect its properties directly |
+| `Semantics(label:)` | Wraps any widget with an explicit semantic label when the widget's own label is insufficient |
+
+---
+
+## What's Next
+
+The login screen's labels are tested. In [Part 2: Dashboard Labels](/chapters/labels/dashboard), you will test the dashboard's heading structure, merged card semantics, and decorative icon exclusion.
