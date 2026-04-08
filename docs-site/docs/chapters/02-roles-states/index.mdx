@@ -5,12 +5,299 @@ title: "Chapter 2: Roles, States, and Actions"
 description: "Test button roles, toggle states, and custom semantics actions"
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Chapter 2: Roles, States, and Actions
 
-> *Coming soon*
+> *"A label tells a screen reader what something is. A role tells it how to interact. A state tells it the current value."*
 
-**Estimated time:** ~30 minutes | **Focus:** Buttons & Toggles | **Branch:** `chapter-2-roles-states`
+**Estimated time:** ~30 minutes | **Focus:** Login, Settings, and Transactions | **Branch:** `chapter-2-roles-states`
 
 ---
 
-Content for this chapter is being written. Check back soon!
+## Why Roles and States Matter
+
+In Chapter 1 you fixed labels — the names that screen readers announce for each element. But a name alone is not enough. Consider a toggle that says "Biometric login." A sighted user can see that it is a switch and whether it is on or off. A screen reader user needs three pieces of information:
+
+1. **Label** — *what* the element is ("Biometric login")
+2. **Role** — *how* to interact with it ("switch" or "toggle")
+3. **State** — *what its current value is* ("on" or "off")
+
+Without a role, a button is just text. A screen reader user hears "Go" but has no idea they can tap it. Without a state, a toggle is a mystery. A screen reader user hears "Biometric login" but cannot tell whether it is currently enabled or disabled.
+
+Flutter's built-in widgets — `ElevatedButton`, `SwitchListTile`, `FilterChip` — provide roles and states automatically. The bugs in this chapter all come from using lower-level widgets that skip this semantic metadata.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Why This Matters</div>
+  <p>WCAG Success Criterion <strong>4.1.2 — Name, Role, Value</strong> requires that all user interface components expose their name, role, and value to assistive technology. A <code>Switch</code> without its label, or a custom chip without a selected state, violates this criterion directly.</p>
+</div>
+
+---
+
+## Part 1: Button Roles
+
+Not everything is broken. Before hunting for bugs, let us confirm that the login screen's "Go" button already has correct role semantics. Testing what works is just as important as testing what does not.
+
+### Writing the Test
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Create <code>test/accessibility/roles_states_test.dart</code> with the test code below. This first test should <strong>pass</strong> — <code>ElevatedButton</code> provides button semantics automatically.</p>
+</div>
+
+```dart title="test/accessibility/roles_states_test.dart"
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:checkbank/screens/login_screen.dart';
+
+void main() {
+  group('Login screen — button roles', () {
+    late SemanticsHandle handle;
+
+    testWidgets('submit button has button role and tap action', (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      final button = find.widgetWithText(ElevatedButton, 'Go');
+      expect(button, findsOneWidget);
+
+      final semantics = tester.getSemantics(button);
+
+      expect(semantics, matchesSemantics(
+        label: 'Go',
+        isButton: true,
+        hasTapAction: true,
+        isEnabled: true,
+        isFocusable: true,
+        hasEnabledState: true,
+        hasFocusAction: true,
+      ));
+
+      handle.dispose();
+    });
+  });
+}
+```
+
+### Understanding the Properties
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title"><code>isButton: true</code></div>
+
+Asserts that the semantics node has the `isButton` flag set. This tells a screen reader to announce the element as a button — "Go, button" — so the user knows they can tap it to perform an action.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title"><code>hasTapAction: true</code></div>
+
+Asserts that the semantics node has a tap action registered. Without a tap action, the element is not interactive from the perspective of assistive technology — even if it responds to taps visually.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title"><code>isEnabled: true</code> and <code>hasEnabledState: true</code></div>
+
+`hasEnabledState` asserts that the widget tracks an enabled/disabled state at all. `isEnabled` asserts that it is currently enabled. Together they tell the screen reader "this button can be activated right now." A disabled button would have `hasEnabledState: true` but `isEnabled: false`, and the screen reader would announce "Go, button, dimmed."
+
+  </div>
+</div>
+
+### Run the Test
+
+```bash title="Terminal"
+flutter test test/accessibility/roles_states_test.dart
+```
+
+This test **passes**. `ElevatedButton` automatically provides `isButton`, `hasTapAction`, `hasEnabledState`, and `isEnabled` in its semantics. No fix needed — the test confirms the button is correctly identified as an interactive control.
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>The login button's role semantics are correct. <code>ElevatedButton</code> does the right thing out of the box. Next you will test something that does not work correctly: toggle switches on the Settings screen.</p>
+</div>
+
+---
+
+## Part 2: Toggle States
+
+The Settings screen has three toggle switches: Biometric login, Push notifications, and Dark mode. Each toggle uses a `ListTile` with a trailing `Switch`:
+
+```dart title="lib/screens/settings_screen.dart (current — buggy)"
+ListTile(
+  title: const Text('Biometric login'),
+  subtitle: Text('Use fingerprint or face to sign in'),
+  trailing: Switch(
+    value: _biometrics,
+    onChanged: (v) => setState(() => _biometrics = v),
+  ),
+),
+```
+
+This looks fine visually. The label is on the left, the switch is on the right. But in the semantics tree, the `ListTile` title and the `Switch` are **separate nodes**. The screen reader reads them as two unrelated elements:
+
+> "Biometric login" ... (swipe) ... "off, switch"
+
+The user hears "off, switch" but has no way to know *which* switch. Was it biometrics? Notifications? Dark mode? The label and the toggle are disconnected.
+
+### Writing the Test
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Add this group to your test file. These tests will <strong>fail</strong> — the Switch semantics node has no label.</p>
+</div>
+
+<Tabs>
+  <TabItem value="failing" label="🔴 Failing Test" default>
+
+```dart title="test/accessibility/roles_states_test.dart (add to file)"
+import 'package:checkbank/screens/settings_screen.dart';
+
+group('Settings screen — toggle states', () {
+  late SemanticsHandle handle;
+
+  testWidgets('biometric toggle exposes its on/off state', (tester) async {
+    handle = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: SettingsScreen()),
+      ),
+    );
+
+    // Find all Switch widgets — there should be 3 toggles
+    final switches = find.byType(Switch);
+    expect(switches, findsNWidgets(3));
+
+    final biometricSwitch = switches.first;
+    final semantics = tester.getSemantics(biometricSwitch);
+
+    // The switch should have toggled state AND its label
+    expect(semantics, matchesSemantics(
+      hasToggledState: true,
+      isToggled: false, // initially off
+      hasTapAction: true,
+      isFocusable: true,
+      label: 'Biometric login', // BUG: this fails
+    ));
+
+    handle.dispose();
+  });
+
+  testWidgets('toggling a switch updates its semantic state', (tester) async {
+    handle = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: SettingsScreen()),
+      ),
+    );
+
+    // Tap the biometric switch to turn it on
+    final switches = find.byType(Switch);
+    await tester.tap(switches.first);
+    await tester.pumpAndSettle();
+
+    final semantics = tester.getSemantics(switches.first);
+
+    // After tapping, isToggled should be true
+    expect(semantics, matchesSemantics(
+      hasToggledState: true,
+      isToggled: true, // now ON
+      hasTapAction: true,
+      isFocusable: true,
+      label: 'Biometric login', // BUG: still fails
+    ));
+
+    handle.dispose();
+  });
+});
+```
+
+  </TabItem>
+  <TabItem value="passing" label="🟢 Passing (Fixed Code)">
+
+The fix is to replace `ListTile` + trailing `Switch` with `SwitchListTile`, which automatically merges the label text and the switch toggle into a single semantics node:
+
+```dart title="lib/screens/settings_screen.dart (fixed)"
+// highlight-start
+SwitchListTile(
+  title: const Text('Biometric login'),
+  subtitle: Text(
+    'Use fingerprint or face to sign in',
+    style: TextStyle(color: AppColors.textSecondary),
+  ),
+  value: _biometrics,
+  onChanged: (v) => setState(() => _biometrics = v),
+),
+// highlight-end
+```
+
+**What changed:** `ListTile` with a trailing `Switch` became `SwitchListTile`. Internally, `SwitchListTile` uses `MergeSemantics` to combine the title text with the switch's toggled state into one semantics node. The screen reader now announces:
+
+> "Biometric login, off, switch"
+
+One swipe. One coherent announcement. The user knows exactly which toggle they are on and what its current state is.
+
+Apply the same fix to the Push notifications and Dark mode toggles.
+
+  </TabItem>
+</Tabs>
+
+### Understanding `hasToggledState` and `isToggled`
+
+These two properties work as a pair, similar to `hasEnabledState` and `isEnabled`:
+
+| Property | Meaning |
+|----------|---------|
+| `hasToggledState: true` | The widget tracks an on/off toggled state — it is a toggle-like control |
+| `isToggled: true` | The toggle is currently in the "on" position |
+| `isToggled: false` | The toggle is currently in the "off" position |
+
+A `Switch` widget always sets `hasToggledState: true`. The `isToggled` value reflects the switch's current `value` property. But without `SwitchListTile` or `MergeSemantics`, the label text lives in a separate semantics node — so the switch node has a toggled state but no label to identify it.
+
+### Run the Tests
+
+```bash title="Terminal"
+flutter test test/accessibility/roles_states_test.dart
+```
+
+Both toggle tests fail with `label was ""` — the Switch semantics node has no label. Apply the `SwitchListTile` fix, then run the tests again. Both should pass.
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You now have three tests: one passing (button role) and two failing (toggle states). The toggle tests demonstrate how <code>ListTile</code> + <code>Switch</code> fragments the semantics, and how <code>SwitchListTile</code> fixes it by merging label and state into one node.</p>
+</div>
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `isButton: true` | Asserts the semantics node has the button role — screen readers announce it as "button" |
+| `hasTapAction: true` | Asserts the node has a registered tap action — the element is interactive |
+| `hasEnabledState` / `isEnabled` | Asserts the widget tracks and exposes enabled/disabled state |
+| `hasToggledState` / `isToggled` | Asserts the widget tracks and exposes on/off toggle state |
+| `SwitchListTile` | Merges a label, subtitle, and switch into one semantics node automatically |
+
+---
+
+## What's Next
+
+The button and toggle semantics are covered. In [Part 2: Custom Actions](/chapters/roles-states/actions), you will test filter chips that are missing their selected state and transaction tiles that hide their delete action from screen reader users.

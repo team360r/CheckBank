@@ -1,0 +1,339 @@
+---
+sidebar_position: 2
+slug: /chapters/roles-states/actions
+title: "Part 2: Custom Actions"
+description: "Test filter chip selected state and custom semantics actions"
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Part 2: Custom Actions
+
+In Part 1, you tested button roles and toggle states — properties that Flutter's built-in widgets provide automatically when used correctly. Now you will test two cases where the developer bypassed Flutter's widget library entirely: filter chips built from raw `GestureDetector` + `Container`, and swipe-to-delete with no custom semantics action.
+
+---
+
+## Filter Chip Selected State
+
+The Transactions screen has three filter buttons: All, Credits, and Debits. They look like filter chips, but they are built from scratch:
+
+```dart title="lib/screens/transactions_screen.dart (current — buggy)"
+Widget _buildFilterChip(String label, _Filter filter) {
+  final isSelected = _filter == filter;
+  return GestureDetector(
+    onTap: () => setState(() => _filter = filter),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isSelected ? AppColors.primary : Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(label),
+    ),
+  );
+}
+```
+
+The `isSelected` variable changes the background colour, but this is purely visual. The semantics tree has no idea which chip is selected. A screen reader user tapping through the filters hears "All" ... "Credits" ... "Debits" — with no indication of which one is currently active.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Why This Matters</div>
+  <p>When a filter is active but does not announce its selected state, a screen reader user cannot confirm which filter they have applied. They might tap "Credits," hear "Credits," but have no way to verify it is now the active filter. This violates WCAG 4.1.2 — the component's value (selected/unselected) is not programmatically determinable.</p>
+</div>
+
+### Writing the Test
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Add this group to your test file. This test will <strong>fail</strong> because <code>GestureDetector</code> exposes no selected state.</p>
+</div>
+
+<Tabs>
+  <TabItem value="failing" label="🔴 Failing Test" default>
+
+```dart title="test/accessibility/roles_states_test.dart (add to file)"
+import 'package:checkbank/screens/transactions_screen.dart';
+
+group('Transactions screen — filter chip state', () {
+  late SemanticsHandle handle;
+
+  testWidgets('filter chips expose selected state', (tester) async {
+    handle = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: TransactionsScreen(accountId: 'acc-1'),
+        ),
+      ),
+    );
+
+    // The "All" filter should be selected by default
+    final allChipText = find.text('All');
+    expect(allChipText, findsOneWidget);
+
+    final semantics = tester.getSemantics(allChipText);
+    final data = semantics.getSemanticsData();
+
+    // Check for any indication of selected state
+    expect(
+      data.hasFlag(SemanticsFlag.isSelected) ||
+          data.hasFlag(SemanticsFlag.isToggled),
+      isTrue,
+      reason:
+          'The active filter chip should expose a selected or toggled '
+          'state in semantics so screen readers can announce which '
+          'filter is currently active',
+    );
+
+    handle.dispose();
+  });
+});
+```
+
+  </TabItem>
+  <TabItem value="passing" label="🟢 Passing (Fixed Code)">
+
+Replace the custom `_buildFilterChip` method with Flutter's built-in `FilterChip` widget:
+
+```dart title="lib/screens/transactions_screen.dart (fixed)"
+// highlight-start
+Widget _buildFilterChip(String label, _Filter filter) {
+  final isSelected = _filter == filter;
+  return FilterChip(
+    label: Text(label),
+    selected: isSelected,
+    onSelected: (_) => setState(() => _filter = filter),
+    selectedColor: AppColors.primary.withValues(alpha: 0.2),
+    checkmarkColor: AppColors.primary,
+  );
+}
+// highlight-end
+```
+
+**What changed:** The `GestureDetector` + `Container` was replaced with `FilterChip`. The `selected` property tells Flutter to include the `isSelected` flag in the semantics tree. The screen reader now announces:
+
+> "All, selected" ... "Credits" ... "Debits"
+
+The user immediately knows which filter is active.
+
+  </TabItem>
+</Tabs>
+
+### Understanding `SemanticsFlag.isSelected`
+
+`FilterChip` uses the `Semantics` widget internally with `selected: true` when the chip is active. This sets the `SemanticsFlag.isSelected` flag on the node. Screen readers translate this flag into platform-appropriate announcements:
+
+- **VoiceOver (iOS):** "All, selected"
+- **TalkBack (Android):** "All, selected"
+
+The test checks for both `isSelected` and `isToggled` because different widgets use different flags to convey similar concepts. `FilterChip` uses `isSelected`; `Switch` uses `isToggled`. Both communicate a binary state to the screen reader.
+
+### Run the Test
+
+```bash title="Terminal"
+flutter test test/accessibility/roles_states_test.dart
+```
+
+The filter chip test fails because `GestureDetector` has no semantics flags at all. Apply the `FilterChip` fix and run again.
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>The filter chip test demonstrates why you should use Flutter's built-in selection widgets instead of building your own from <code>GestureDetector</code>. <code>FilterChip</code> handles visual styling, touch targets, and semantics all in one package.</p>
+</div>
+
+---
+
+## Custom Semantics Actions
+
+The Transactions screen supports swipe-to-delete on each transaction tile via the `Dismissible` widget:
+
+```dart title="lib/widgets/transaction_tile.dart (current — buggy)"
+return Dismissible(
+  key: Key(transaction.id),
+  direction: DismissDirection.endToStart,
+  onDismissed: (_) => onDismissed?.call(),
+  background: Container(
+    alignment: Alignment.centerRight,
+    padding: const EdgeInsets.only(right: 16),
+    color: AppColors.error,
+    child: const Icon(Icons.delete, color: Colors.white),
+  ),
+  child: ListTile(
+    title: Text(transaction.description),
+    // ...
+  ),
+);
+```
+
+Swipe-to-delete is a gesture-based interaction. Screen reader users do not use swipe gestures for navigation in the same way — they use single-finger swipes to move between elements. A screen reader user has no way to discover that swiping left on a transaction tile deletes it.
+
+The solution is `CustomSemanticsAction`. This creates a named action that appears in the screen reader's action menu. On iOS, a VoiceOver user swipes up/down to cycle through available actions. On Android, TalkBack shows them in a local context menu.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Why This Matters</div>
+  <p>Any gesture-based action that is not available through the standard accessibility interface is invisible to screen reader users. Swipe-to-delete, long-press menus, and drag-to-reorder all need <code>CustomSemanticsAction</code> equivalents. Without them, screen reader users lose functionality that sighted users take for granted.</p>
+</div>
+
+### Writing the Test
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Add this group to your test file. This test will <strong>fail</strong> because <code>Dismissible</code> does not add a custom action automatically.</p>
+</div>
+
+<Tabs>
+  <TabItem value="failing" label="🔴 Failing Test" default>
+
+```dart title="test/accessibility/roles_states_test.dart (add to file)"
+import 'package:checkbank/widgets/transaction_tile.dart';
+
+group('Transactions screen — custom actions', () {
+  late SemanticsHandle handle;
+
+  testWidgets('transaction tile has a custom delete action', (tester) async {
+    handle = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: TransactionsScreen(accountId: 'acc-1'),
+        ),
+      ),
+    );
+
+    // Find the first TransactionTile
+    final tiles = find.byType(TransactionTile);
+    expect(tiles, findsWidgets);
+
+    final firstTile = tiles.first;
+    final semantics = tester.getSemantics(firstTile);
+
+    // Should have a custom "Delete" action
+    expect(
+      semantics.getSemanticsData().customSemanticsActionIds,
+      isNotEmpty,
+      reason:
+          'Transaction tile should expose a custom "Delete" action '
+          'via CustomSemanticsAction so screen reader users can '
+          'discover and invoke the delete action',
+    );
+
+    handle.dispose();
+  });
+});
+```
+
+  </TabItem>
+  <TabItem value="passing" label="🟢 Passing (Fixed Code)">
+
+Wrap the `Dismissible` in a `Semantics` widget with a `CustomSemanticsAction`:
+
+```dart title="lib/widgets/transaction_tile.dart (fixed)"
+@override
+Widget build(BuildContext context) {
+  final isCredit = transaction.type == TransactionType.credit;
+  final amountText =
+      '${isCredit ? '+' : '-'}£${transaction.amount.toStringAsFixed(2)}';
+  final dateText = DateFormat('HH:mm').format(transaction.date);
+
+  // highlight-start
+  return Semantics(
+    customSemanticsActions: {
+      CustomSemanticsAction(label: 'Delete'): () {
+        onDismissed?.call();
+      },
+    },
+    child: Dismissible(
+  // highlight-end
+      key: Key(transaction.id),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) => onDismissed?.call(),
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        color: AppColors.error,
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      child: ListTile(
+        title: Text(transaction.description),
+        subtitle: Text(dateText),
+        trailing: Text(amountText),
+      ),
+    ),
+  );
+}
+```
+
+**What changed:** A `Semantics` widget wraps the `Dismissible` and declares a `CustomSemanticsAction` with the label "Delete." When a screen reader user focuses on a transaction tile:
+
+- **VoiceOver (iOS):** The user swipes up/down to find "Delete" in the actions rotor, then double-taps to invoke it.
+- **TalkBack (Android):** The user opens the local context menu to find the "Delete" action.
+
+The gesture-based delete still works for sighted users. The custom action provides an equivalent path for screen reader users.
+
+  </TabItem>
+</Tabs>
+
+### Understanding `CustomSemanticsAction`
+
+`CustomSemanticsAction` adds named actions to a semantics node. Each action has:
+
+- A `label` — the text that the screen reader announces in its action menu
+- A callback — the function that runs when the user activates the action
+
+You can add multiple custom actions to a single node:
+
+```dart
+Semantics(
+  customSemanticsActions: {
+    CustomSemanticsAction(label: 'Delete'): _handleDelete,
+    CustomSemanticsAction(label: 'Archive'): _handleArchive,
+    CustomSemanticsAction(label: 'Share'): _handleShare,
+  },
+  child: // ...
+)
+```
+
+The test verifies that `customSemanticsActionIds` is not empty. This is a lightweight check — it confirms that at least one custom action exists without asserting the exact label. For a more thorough test, you could inspect the action IDs against known `CustomSemanticsAction` instances.
+
+### Run All Tests
+
+```bash title="Terminal"
+flutter test test/accessibility/roles_states_test.dart
+```
+
+You should see one test pass (button role) and four tests fail (two toggle tests, one filter chip, one custom action). Apply all the fixes and run again — all five tests should go green.
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You now have five tests covering roles, states, and actions across three screens:</p>
+  <ul>
+    <li>Login button — <code>isButton</code>, <code>hasTapAction</code>, <code>isEnabled</code> (passes)</li>
+    <li>Settings toggles — <code>hasToggledState</code>, <code>isToggled</code>, label merging (fails until <code>SwitchListTile</code>)</li>
+    <li>Filter chips — <code>isSelected</code> state (fails until <code>FilterChip</code>)</li>
+    <li>Transaction tiles — <code>CustomSemanticsAction</code> for delete (fails until <code>Semantics</code> wrapper)</li>
+  </ul>
+</div>
+
+---
+
+## Summary
+
+| Bug | Widget | Fix | Test Technique |
+|-----|--------|-----|---------------|
+| Button has correct role | `ElevatedButton` | None needed | `matchesSemantics(isButton: true, hasTapAction: true)` |
+| Toggle state not linked to label | `ListTile` + `Switch` | Replace with `SwitchListTile` | `matchesSemantics(hasToggledState: true, label: ...)` |
+| Filter has no selected state | `GestureDetector` + `Container` | Replace with `FilterChip` | `SemanticsFlag.isSelected` on the semantics data |
+| Swipe-to-delete invisible to screen readers | `Dismissible` alone | Wrap with `Semantics(customSemanticsActions: ...)` | `customSemanticsActionIds` is not empty |
+
+---
+
+## What's Next
+
+Roles, states, and actions complete the semantic picture that started with labels in Chapter 1. Your widgets now identify themselves, describe how to interact with them, and expose their current values to assistive technology.
+
+In [Chapter 3: Contrast](/chapters/contrast), you will move from semantic correctness to visual accessibility — testing whether text and interactive elements have sufficient colour contrast for users with low vision.
+
+Before moving on, take the [Chapter 2 Quiz](/chapters/roles-states/quiz) to check your understanding.

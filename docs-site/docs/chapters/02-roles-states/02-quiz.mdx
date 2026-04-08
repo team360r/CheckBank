@@ -1,0 +1,78 @@
+---
+sidebar_position: 3
+slug: /chapters/roles-states/quiz
+title: "Quiz: Roles, States, and Actions"
+---
+
+import { Quiz, QuizQuestion } from '@site/src/components/Quiz';
+
+# Quiz: Roles, States, and Actions
+
+<Quiz chapterId="ch02">
+  <QuizQuestion
+    question="What does isButton: true tell a screen reader about an element?"
+    options={[
+      "That the element is visually styled as a button with rounded corners",
+      "That the element has the button role — the screen reader announces it as 'button' so the user knows they can tap it",
+      "That the element will navigate to a new screen when tapped",
+      "That the element has a label starting with a verb like 'Submit' or 'Go'"
+    ]}
+    correctIndex={1}
+    explanation="The isButton flag sets the button role on the semantics node. When a screen reader encounters this flag, it announces the element with its role — for example, 'Go, button'. This tells the user that the element is interactive and can be activated with a tap or double-tap."
+  />
+  <QuizQuestion
+    question="Why is SwitchListTile better than ListTile + trailing Switch for accessibility?"
+    options={[
+      "SwitchListTile looks better visually with more consistent spacing",
+      "SwitchListTile is faster to render because it uses fewer widgets",
+      "SwitchListTile merges the title label and the toggle state into a single semantics node, so the screen reader announces them together",
+      "SwitchListTile automatically disables the switch when the app is in the background"
+    ]}
+    correctIndex={2}
+    explanation="When you use ListTile with a trailing Switch, the title text and the switch live in separate semantics nodes. A screen reader user hears 'Biometric login' and then separately 'off, switch' with no connection between them. SwitchListTile uses MergeSemantics internally to combine both into a single node: 'Biometric login, off, switch'."
+  />
+  <QuizQuestion
+    question="What do hasToggledState and isToggled assert in matchesSemantics?"
+    options={[
+      "hasToggledState checks if the widget is visible; isToggled checks if it is tapped",
+      "hasToggledState asserts the widget tracks an on/off state; isToggled asserts the current value of that state (true = on, false = off)",
+      "hasToggledState checks for a checkbox; isToggled checks for a radio button",
+      "Both assert the same thing — they are aliases for each other"
+    ]}
+    correctIndex={1}
+    explanation="hasToggledState and isToggled work as a pair. hasToggledState: true means the widget declares that it is a toggle-like control with an on/off state. isToggled: true means the toggle is currently in the 'on' position. A screen reader uses both: the first to know it should announce 'switch' and the second to announce 'on' or 'off'."
+  />
+  <QuizQuestion
+    question="When should you use CustomSemanticsAction?"
+    options={[
+      "Whenever a button needs a label for the screen reader",
+      "When a gesture-based action (swipe, long-press, drag) has no equivalent in the standard accessibility interface",
+      "Only when testing on iOS — Android does not support custom actions",
+      "When you want to change the label of an existing semantic action"
+    ]}
+    correctIndex={1}
+    explanation="CustomSemanticsAction creates named actions that appear in the screen reader's action menu. Use it whenever an interaction is only available through gestures that screen reader users cannot perform — like swipe-to-delete or drag-to-reorder. Both VoiceOver (iOS) and TalkBack (Android) support custom actions."
+  />
+  <QuizQuestion
+    question="What does hasTapAction: true verify about a widget's semantics?"
+    options={[
+      "That the widget responds to tap events in the gesture system",
+      "That the widget has a registered tap action in the semantics tree — assistive technology can activate it",
+      "That the widget changes colour when tapped",
+      "That the widget has an onTap callback in its constructor"
+    ]}
+    correctIndex={1}
+    explanation="hasTapAction: true asserts that the semantics node has a tap action registered. This is what makes an element interactive from the perspective of assistive technology. Without a tap action in semantics, a screen reader user cannot activate the element — even if the widget responds to taps visually through a GestureDetector."
+  />
+  <QuizQuestion
+    question="A custom filter chip built with GestureDetector + Container changes its background colour when selected. Why does this fail the filter chip selected state test?"
+    options={[
+      "GestureDetector does not support the onTap callback",
+      "Container cannot have a background colour in the test environment",
+      "Visual colour changes are not reflected in the semantics tree — GestureDetector has no concept of a selected state",
+      "The test framework cannot detect background colour changes"
+    ]}
+    correctIndex={2}
+    explanation="Changing a background colour is a purely visual indication of selection. The semantics tree has no knowledge of widget colours or visual styling. For a screen reader to announce that a chip is selected, the semantics node needs the isSelected or isToggled flag — which GestureDetector does not provide. Flutter's FilterChip widget sets this flag automatically through its selected property."
+  />
+</Quiz>
