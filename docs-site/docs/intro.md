@@ -2,47 +2,45 @@
 sidebar_position: 1
 slug: /intro
 title: Introduction
-description: "Welcome to SecureBank — a hands-on Flutter security tutorial built around a real banking app."
+description: "Welcome to CheckBank — a test-driven Flutter accessibility tutorial."
 ---
 
 # Introduction
 
-**SecureBank** is a hands-on Flutter security tutorial for developers who can build apps but haven't focused on security. You'll start with a deliberately vulnerable banking app and harden it chapter by chapter against the OWASP Mobile Top 10.
+**CheckBank** is a hands-on Flutter accessibility tutorial for developers who can build apps but haven't focused on making them accessible. You'll start with a banking app that looks fine — but is riddled with accessibility failures only your tests can see.
 
-## What you'll learn
+## What is CheckBank?
 
-Over 12 chapters and roughly 6 hours, you'll fix real security vulnerabilities:
-
-- **Authentication** — Secure login, session management, token handling
-- **Secure Storage** — Keychain/Keystore via flutter_secure_storage
-- **Network Security** — HTTPS enforcement, certificate pinning, MITM prevention
-- **Encryption** — AES at rest, key derivation, encrypted database columns
-- **Authorization** — Role-based guards, deep link validation
-- **Injection Prevention** — SQL injection, XSS, input sanitization
-- **Obfuscation** — Dart obfuscation, ProGuard, anti-tampering
-- **Secure Logging** — PII filtering, audit trails, crash reporting
-- **Biometrics** — local_auth, screenshot prevention, lifecycle protection
-- **Security Testing** — Static analysis, dependency auditing, CI pipeline
-- **Secure Deployment** — Signing, runtime integrity, secrets management
+CheckBank is a Flutter banking app that appears perfectly functional. The screens render, the buttons respond, the balance updates. But fire up a screen reader, plug in a keyboard, or scale the text to 200%, and the cracks appear everywhere. Your job is to write the tests that expose each failure, then fix the code until every test goes green.
 
 ## Who this is for
 
-You're a Flutter developer who can build apps. You know widgets, state management, and navigation — but you haven't focused on security. No prior security experience needed.
+You're a Flutter developer who can build apps. You know widgets, state management, and navigation. If you've completed CoreBank Chapter 11 (widget testing basics), you're ready. No prior accessibility experience needed — every concept is introduced as you need it.
 
-## How it works
+## The audit metaphor
 
-Each chapter follows the same pattern: identify a vulnerability, explain the real-world risk, then fix it. You'll work in two windows — this tutorial in your browser and the SecureBank app in your IDE.
+Imagine you've been hired to audit a banking app for accessibility compliance. The previous developers swore it was accessible — they checked by eye. Your job is to prove them wrong with automated tests, then fix what you find. Every chapter is one section of your audit report.
 
-### Chapter branches
+## How the tutorial works
 
-Every chapter has a matching git branch that contains SecureBank exactly as it should look after completing that chapter. The branches build incrementally — `chapter-1-front-door` secures authentication, `chapter-3-encrypted-channels` adds cert pinning, and so on up to `completed` which is the fully hardened app.
+Every chapter follows a **red-green flow**:
+
+1. **Red** — Write a test that exposes an accessibility bug. Watch it fail.
+2. **Green** — Fix the production code until the test passes.
+3. **Refactor** — Clean up, extract helpers, and move on.
+
+You'll work in two windows — this tutorial in your browser and the CheckBank app in your IDE.
+
+## Chapter branches
+
+Every chapter has a matching git branch that contains CheckBank exactly as it should look after completing that chapter. The branches build incrementally — `chapter-0-audit-begins` sets up test infrastructure, `chapter-3-contrast` adds colour contrast tests, and so on up to `chapter-10-ci-pipeline` which is the fully audited app.
 
 ```bash
 # See the finished code for any chapter
-git checkout chapter-3-encrypted-channels
+git checkout chapter-3-contrast
 
 # Compare your work against the solution
-git diff chapter-3-encrypted-channels -- lib/
+git diff chapter-3-contrast -- lib/ test/
 
 # Go back to where you were
 git checkout main
@@ -55,6 +53,7 @@ You don't need to use the branches at all if you're following along — they're 
 ## Prerequisites
 
 - Flutter SDK 3.22+ and basic Flutter experience
+- Widget testing basics (CoreBank Chapter 11 or equivalent)
 - Node.js 20+ (for the tutorial site)
 - A device or emulator
 - An IDE — VS Code or Android Studio
@@ -62,10 +61,10 @@ You don't need to use the branches at all if you're following along — they're 
 ## Quick Start
 
 ```bash
-git clone git@github.com:team360r/secure.git
-cd secure
-./setup.sh
+git clone git@github.com:team360r/checkbank.git
+cd checkbank
+flutter pub get
 ./start.sh
 ```
 
-Then head to [Chapter 0: Threat Briefing](/chapters/threat-briefing).
+Then head to [Chapter 0: The Audit Begins](/chapters/audit-begins).
