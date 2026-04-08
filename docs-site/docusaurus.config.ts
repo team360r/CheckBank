@@ -3,19 +3,19 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'SecureBank Tutorial',
-  tagline: 'Harden a Flutter banking app against real-world attacks',
+  title: 'CheckBank Tutorial',
+  tagline: 'Your eyes lied to you. Your tests are the truth.',
   favicon: 'img/favicon.ico',
 
   future: {
     v4: true,
   },
 
-  url: 'https://securebank-tutorial.dev',
+  url: 'https://checkbank-tutorial.dev',
   baseUrl: '/',
 
   organizationName: 'team360r',
-  projectName: 'SecureBank',
+  projectName: 'CheckBank',
 
   onBrokenLinks: 'throw',
 
@@ -51,9 +51,9 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'SecureBank Tutorial',
+      title: 'CheckBank Tutorial',
       logo: {
-        alt: 'SecureBank Tutorial Logo',
+        alt: 'CheckBank Tutorial Logo',
         src: 'img/logo.svg',
       },
       items: [
@@ -64,7 +64,7 @@ const config: Config = {
           label: 'Tutorial',
         },
         {
-          to: '/chapters/threat-briefing',
+          to: '/chapters/audit-begins',
           label: 'Get Started',
           position: 'right',
         },
@@ -82,13 +82,13 @@ const config: Config = {
               to: '/intro',
             },
             {
-              label: 'Chapter 0: Threat Briefing',
-              to: '/chapters/threat-briefing',
+              label: 'Chapter 0: The Audit Begins',
+              to: '/chapters/audit-begins',
             },
           ],
         },
       ],
-      copyright: `Copyright \u00a9 ${new Date().getFullYear()} SecureBank Tutorial. Built with Docusaurus.`,
+      copyright: `Copyright \u00a9 ${new Date().getFullYear()} CheckBank Tutorial. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,

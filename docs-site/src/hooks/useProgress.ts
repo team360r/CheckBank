@@ -1,6 +1,6 @@
 import React from 'react';
 
-const STORAGE_KEY = 'securebank_progress';
+const STORAGE_KEY = 'checkbank_progress';
 
 export interface QuizState {
   answers: (number | null)[];
