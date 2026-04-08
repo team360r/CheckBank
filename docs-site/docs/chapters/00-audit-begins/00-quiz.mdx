@@ -1,0 +1,67 @@
+---
+sidebar_position: 2
+slug: /chapters/audit-begins/quiz
+title: "Quiz: The Audit Begins"
+---
+
+import { Quiz, QuizQuestion } from '@site/src/components/Quiz';
+
+# Quiz: The Audit Begins
+
+<Quiz chapterId="ch00">
+  <QuizQuestion
+    question="What does tester.ensureSemantics() do in a Flutter widget test?"
+    options={[
+      "Enables the semantics tree for the test, allowing accessibility assertions",
+      "Automatically fixes accessibility issues in the widget",
+      "Checks that all widgets have semantic labels",
+      "Runs the app in screen reader mode"
+    ]}
+    correctIndex={0}
+    explanation="ensureSemantics() enables the semantics tree in the test environment. Without it, semantics-related finders and matchers won't work. It returns a SemanticsHandle that must be disposed when the test is done."
+  />
+  <QuizQuestion
+    question="A Flutter TextField uses hintText but not labelText. What does a screen reader announce when the user focuses the field?"
+    options={[
+      "The hint text, clearly identifying the field's purpose",
+      "Nothing at all — the field is completely invisible",
+      "Just 'Edit box' with no indication of the field's purpose",
+      "An error telling the developer to add a label"
+    ]}
+    correctIndex={2}
+    explanation="When a TextField only has hintText, the screen reader typically announces 'Edit box' (or similar) without describing the field's purpose. The hintText may briefly appear as a visual placeholder, but it is not a reliable semantic label — once the user starts typing, even that hint vanishes."
+  />
+  <QuizQuestion
+    question="Why is visual testing alone insufficient for verifying accessibility?"
+    options={[
+      "Visual tests run too slowly to be practical",
+      "Sighted testers see content that assistive technology cannot detect — missing labels, absent roles, and silent updates are invisible to the eye",
+      "Visual tests cannot check colour palettes",
+      "Flutter does not support visual testing"
+    ]}
+    correctIndex={1}
+    explanation="Visual testing only confirms what a sighted user experiences. Accessibility failures — like a text field with no semantic label or an error that does not announce itself — look perfectly normal on screen. You need tests that query the semantics tree to catch what the eye cannot."
+  />
+  <QuizQuestion
+    question="What is the purpose of calling handle.dispose() after an accessibility test?"
+    options={[
+      "It saves the test results to a report file",
+      "It resets the widget tree for the next test",
+      "It releases the SemanticsHandle, cleaning up the semantics tree resources",
+      "It disables the screen reader simulation"
+    ]}
+    correctIndex={2}
+    explanation="tester.ensureSemantics() returns a SemanticsHandle — a disposable resource. Calling dispose() releases it and tears down the semantics binding for the test. Failing to dispose can cause warnings or resource leaks in the test runner."
+  />
+  <QuizQuestion
+    question="According to the World Health Organisation, roughly what percentage of the global population lives with some form of disability?"
+    options={[
+      "About 2%",
+      "About 5%",
+      "About 10%",
+      "About 16%"
+    ]}
+    correctIndex={3}
+    explanation="The WHO estimates that around 16% of the global population — over 1.3 billion people — experience significant disability. Accessibility is not a niche concern. When you skip accessibility, you exclude a substantial portion of your potential users."
+  />
+</Quiz>

@@ -5,12 +5,273 @@ title: "Chapter 0: The Audit Begins"
 description: "Tour the app, discover it's broken, set up test infrastructure"
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Chapter 0: The Audit Begins
 
-> *Coming soon*
+> *"The power of the Web is in its universality. Access by everyone regardless of disability is an essential aspect."*
+> — Tim Berners-Lee
 
-**Estimated time:** ~15 minutes | **Focus:** App overview | **Branch:** `chapter-0-audit-begins`
+**Estimated time:** ~20 minutes | **Focus:** App overview & test setup | **Branch:** `chapter-0-audit-begins`
 
 ---
 
-Content for this chapter is being written. Check back soon!
+## The Visual Tour
+
+Launch CheckBank and take a moment to look at it. Really look.
+
+The login screen greets you with a clean teal bank icon, a bold "CheckBank" title, and a welcoming subtitle. Two input fields sit neatly below — email and password — followed by a wide teal "Go" button. A "Forgot password?" link sits underneath in understated grey text. The whole screen is centred, well-spaced, breathing room everywhere. It feels considered.
+
+Sign in and the dashboard unfolds: account summary cards showing balances, a recent transactions list with category icons, amounts formatted in neat columns. Navigate to the Transactions tab and you get date-based filters, a search bar, and a scrollable list with alternating visual weights. The Transfer screen walks you through a stepper — choose recipient, enter amount, confirm. Settings gives you toggles for notifications and biometric login, a theme selector, and sign-out.
+
+The colour palette is consistent. The typography is hierarchical. The spacing is deliberate. If you showed this to a product review meeting, people would nod approvingly.
+
+If you stopped here, you would ship it.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Do Not Stop Here</div>
+  <p>A visually polished app and an accessible app are not the same thing. You are about to discover just how wide that gap can be.</p>
+</div>
+
+---
+
+## The Screen Reader Reveal
+
+Pick up your phone and turn on the screen reader.
+
+<Tabs>
+  <TabItem value="android" label="Android (TalkBack)" default>
+
+Open **Settings > Accessibility > TalkBack** and toggle it on. You will hear a voice start reading everything you touch.
+
+  </TabItem>
+  <TabItem value="ios" label="iOS (VoiceOver)">
+
+Open **Settings > Accessibility > VoiceOver** and toggle it on. Triple-press the side button to toggle it quickly in future.
+
+  </TabItem>
+</Tabs>
+
+Now open CheckBank to the login screen and swipe through each element, one by one. Listen carefully to what the screen reader announces.
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">The email field</div>
+
+Swipe to the first text field. The screen reader says: **"Edit box. Double tap to edit."**
+
+That is it. No mention of "email". No mention of "address". A sighted user sees the placeholder text "Email address" — but once the screen reader user starts typing, even that hint vanishes. They are typing into an unnamed box.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">The password field</div>
+
+Same story. **"Edit box. Double tap to edit."** Which edit box? Is this the password field? The credit card field? There is no way to know without sighted assistance.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">The "Go" button</div>
+
+Swipe forward. The screen reader announces: **"Go. Button. Double tap to activate."**
+
+Go where? Go how? Does this submit the form, navigate to another page, or launch a rocket? The label "Go" is meaningless without visual context. A sighted user sees it sits below login fields and infers its purpose. A screen reader user hears a single syllable and has to guess.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">4</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">The "Forgot password?" link</div>
+
+Keep swiping. Depending on the screen reader, you may skip right past it. The "Forgot password?" text is wrapped in a `GestureDetector` — it has no semantic role telling the screen reader it is interactive. It is also rendered in a small font with low-contrast grey text. For the screen reader, this interactive element may as well not exist.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">5</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">The error message</div>
+
+Tap "Go" without entering credentials. A red error message appears on screen — sighted users see it immediately. But the screen reader says nothing. Absolute silence. The error is not inside a live region, so the assistive technology has no idea new content appeared. The screen reader user taps "Go", hears nothing, and wonders if the app crashed.
+
+  </div>
+</div>
+
+That was just the login screen. Five elements. Five failures.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Your Eyes Lied to You</div>
+  <p>The app looks polished, professional, ready to ship. But for anyone using assistive technology, it is broken. Fields have no names. Buttons have no purpose. Interactive elements are invisible. Errors are silent. The entire experience is a guessing game.</p>
+  <p>This is not a contrived example. This is what real apps ship every day.</p>
+</div>
+
+---
+
+## The Audit Checklist
+
+Every accessibility failure in CheckBank maps to a category. Each category gets its own chapter. Each chapter follows the same flow: write a failing test, watch it go red, fix the code, watch it go green.
+
+Here is the full audit:
+
+| # | Failure Category | What's Wrong | Chapter |
+|---|---|---|---|
+| 1 | Missing labels | Interactive elements without semantic labels | [Ch 1](/chapters/labels) |
+| 2 | Missing roles & states | Buttons without roles, toggles without state announcements | [Ch 2](/chapters/roles-states) |
+| 3 | Contrast failures | Text colours below WCAG AA thresholds | [Ch 3](/chapters/contrast) |
+| 4 | Undersized targets | Touch targets below 48 x 48 dp | [Ch 4](/chapters/sizing) |
+| 5 | Focus chaos | No logical tab order, focus does not follow action | [Ch 5](/chapters/focus) |
+| 6 | Silent updates | Dynamic content that changes without announcing | [Ch 6](/chapters/announcements) |
+| 7 | Journey gaps | Cross-screen flows that break for AT users | [Ch 7](/chapters/integration) |
+
+Your mission: write an automated test for every row in this table. By the final chapter, CheckBank will have a complete accessibility test suite that runs on every pull request.
+
+---
+
+## Setting Up the Test Infrastructure
+
+Before we write our first real accessibility test in Chapter 1, we need the plumbing in place. This section sets up the directory structure and verifies that the Flutter test framework can enable the semantics tree.
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Create the test directory</div>
+
+All accessibility tests will live in their own directory, separate from any unit or widget tests you might write later.
+
+```bash title="Terminal"
+mkdir -p test/accessibility
+```
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Understand `tester.ensureSemantics()`</div>
+
+Flutter widget tests do not enable the semantics tree by default. Without semantics, all the accessibility matchers and finders are blind — they cannot query labels, roles, or states because that data does not exist in the test environment.
+
+Calling `tester.ensureSemantics()` flips the switch. It tells the framework: "Build the full semantics tree for this test, exactly as a real screen reader would see it." The method returns a `SemanticsHandle` — a disposable resource you must clean up when the test ends.
+
+Every accessibility test you write in this tutorial will start with this line:
+
+```dart
+final handle = tester.ensureSemantics();
+```
+
+And end with:
+
+```dart
+handle.dispose();
+```
+
+Think of it as opening and closing a connection to the accessibility layer.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Write the smoke test</div>
+
+Create the following file. This test does not check any accessibility properties yet — it simply verifies the login screen renders and the semantics tree is available.
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Create <code>test/accessibility/audit_smoke_test.dart</code> with the code below.</p>
+</div>
+
+```dart title="test/accessibility/audit_smoke_test.dart"
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:checkbank/screens/login_screen.dart';
+
+void main() {
+  group('Audit smoke test', () {
+    testWidgets('login screen renders with semantics enabled', (tester) async {
+      final handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      // The app renders — but are the semantics correct?
+      // We'll find out in the next chapters.
+      expect(find.text('CheckBank'), findsOneWidget);
+      expect(find.text('Go'), findsOneWidget);
+
+      handle.dispose();
+    });
+  });
+}
+```
+
+Let us walk through what this test does:
+
+1. **`tester.ensureSemantics()`** — enables the semantics tree and gives us a handle to dispose later.
+2. **`ProviderScope`** — CheckBank uses Riverpod for state management. Every screen needs a `ProviderScope` ancestor.
+3. **`MaterialApp(home: LoginScreen())`** — wraps the screen in a minimal Material app so themes and navigation work.
+4. **`find.text('CheckBank')`** — verifies the branding text rendered.
+5. **`find.text('Go')`** — verifies the submit button rendered.
+6. **`handle.dispose()`** — cleans up the semantics tree.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">4</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Run the test</div>
+
+```bash title="Terminal"
+flutter test test/accessibility/audit_smoke_test.dart
+```
+
+You should see output like:
+
+```
+00:03 +1: All tests passed!
+```
+
+  </div>
+</div>
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>The smoke test passes. The login screen renders and the semantics tree is active.</p>
+</div>
+
+But hold on. Read the test again carefully. What does it actually prove about accessibility?
+
+Nothing.
+
+It checks that the text "CheckBank" and "Go" appear on screen — the same things your eyes can see. It says nothing about whether a screen reader can identify the email field, whether the button has a meaningful label, or whether errors get announced.
+
+This test is green, but it tells us nothing about accessibility. That changes in Chapter 1.
+
+---
+
+## What's Next
+
+In the next chapter, you will write tests that assert semantic labels exist on every interactive element. The login screen alone has at least three missing labels — the email field, the password field, and the submit button all fail to identify themselves to assistive technology.
+
+Your tests will catch every one of them. Then you will fix the code and watch the tests go green.
+
+The audit has begun. Time to write some failing tests.
