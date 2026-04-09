@@ -5,12 +5,397 @@ title: "Chapter 4: Touch Targets and Text Scaling"
 description: "Test minimum touch targets and layout at 200% text scale"
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Chapter 4: Touch Targets and Text Scaling
 
-> *Coming soon*
+> *"The biggest accessibility failure is the one that never registers as a bug -- because the developer's finger is small enough to hit a 24dp button."*
 
-**Estimated time:** ~25 minutes | **Focus:** Sizing & Layout | **Branch:** `chapter-4-sizing`
+**Estimated time:** ~25 minutes | **Focus:** Login + Settings | **Branch:** `chapter-4-sizing`
 
 ---
 
-Content for this chapter is being written. Check back soon!
+## Part 1: Touch Targets
+
+Every interactive element in a mobile app needs a minimum touch target size. If a button, link, or checkbox is too small, users with motor impairments, tremors, or simply large fingers will struggle to activate it reliably.
+
+### The Standards
+
+WCAG 2.5.8 (Target Size -- Minimum) requires interactive elements to be at least **24x24 CSS pixels**. But platform guidelines go further:
+
+| Standard | Minimum Size | Notes |
+|----------|-------------|-------|
+| WCAG 2.5.8 (AA) | 24 x 24 px | Web Content Accessibility Guidelines |
+| WCAG 2.5.5 (AAA) | 44 x 44 px | Enhanced target size |
+| Android (Material) | **48 x 48 dp** | Material Design guidelines |
+| iOS (HIG) | **44 x 44 pt** | Apple Human Interface Guidelines |
+
+In Flutter, the Material library targets the **48dp** Android guideline. Material buttons, checkboxes, and radio buttons all enforce a 48dp minimum tap area by default. But when you build custom interactive widgets -- such as wrapping a `Text` in a `GestureDetector` -- that minimum is not applied automatically.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Why 48dp?</div>
+  <p>The 48dp target comes from the average size of an adult fingertip: roughly 7mm, which corresponds to about 48dp at the baseline screen density. Users with motor impairments may have less precise control, making this minimum even more critical. The iOS guideline of 44pt is similar in physical size.</p>
+</div>
+
+---
+
+## The Tool: `tester.getSize()`
+
+Flutter's `WidgetTester` provides `getSize(Finder)`, which returns the rendered `Size` of the widget matched by the finder. You can use this to verify that any interactive element meets the minimum tap target dimensions.
+
+```dart
+final size = tester.getSize(find.text('Forgot password?'));
+expect(size.height, greaterThanOrEqualTo(48.0));
+expect(size.width, greaterThanOrEqualTo(48.0));
+```
+
+This is straightforward but powerful. It catches a class of bugs that are invisible during normal development -- the developer taps the button successfully because their aim is precise, but a user with a motor impairment cannot.
+
+---
+
+## Writing the Test File
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Create <code>test/accessibility/sizing_test.dart</code> with the code below. One test will <strong>fail</strong> against the current Login screen -- the "Forgot password?" link is too small to tap reliably.</p>
+</div>
+
+<Tabs>
+  <TabItem value="failing" label="🔴 Full Test File" default>
+
+```dart title="test/accessibility/sizing_test.dart"
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:checkbank/screens/login_screen.dart';
+import 'package:checkbank/screens/settings_screen.dart';
+
+void main() {
+  // ---------------------------------------------------------------------------
+  // Touch target sizes — WCAG 2.5.8 / platform guidelines
+  // ---------------------------------------------------------------------------
+  group('Touch targets — minimum 48x48 dp', () {
+    testWidgets('login "Go" button meets 48dp minimum height', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      final button = find.widgetWithText(ElevatedButton, 'Go');
+      expect(button, findsOneWidget);
+
+      final size = tester.getSize(button);
+
+      // GREEN: ElevatedButton with vertical padding 14 + text height
+      // easily exceeds 48dp.
+      expect(size.height, greaterThanOrEqualTo(48.0),
+          reason:
+              'Sign-in button height: ${size.height}dp — needs >= 48dp');
+    });
+
+    testWidgets('login email field meets 48dp minimum height',
+        (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      final emailField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == 'Email address',
+      );
+      expect(emailField, findsOneWidget);
+
+      final size = tester.getSize(emailField);
+
+      // GREEN: Material TextField default height meets 48dp minimum.
+      expect(size.height, greaterThanOrEqualTo(48.0),
+          reason:
+              'Email field height: ${size.height}dp — needs >= 48dp');
+    });
+
+    testWidgets('forgot password link meets 48dp minimum height',
+        (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      final forgotPassword = find.text('Forgot password?');
+      expect(forgotPassword, findsOneWidget);
+
+      final size = tester.getSize(forgotPassword);
+
+      // RED: The GestureDetector wraps a small Text with no padding
+      // or minimum size constraint. The touch target height is only
+      // ~16dp — far below the 48dp minimum.
+      //
+      // FIX: Wrap with SizedBox(height: 48) or replace with TextButton
+      // which provides a minimum 48dp tap area automatically.
+      expect(size.height, greaterThanOrEqualTo(48.0),
+          reason:
+              'Forgot password touch target height: ${size.height}dp '
+              '— needs >= 48dp (WCAG 2.5.8)');
+    });
+
+    testWidgets('forgot password link meets 48dp minimum width',
+        (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      final forgotPassword = find.text('Forgot password?');
+      expect(forgotPassword, findsOneWidget);
+
+      final size = tester.getSize(forgotPassword);
+
+      // GREEN: The text "Forgot password?" is wide enough.
+      expect(size.width, greaterThanOrEqualTo(48.0),
+          reason:
+              'Forgot password touch target width: ${size.width}dp '
+              '— needs >= 48dp (WCAG 2.5.8)');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Text scaling — 200% (covered in Part 2)
+  // ---------------------------------------------------------------------------
+  group('Text scaling — 200% (MediaQuery)', () {
+    testWidgets('login screen handles 200% text scale without overflow',
+        (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(
+                textScaler: TextScaler.linear(2.0),
+              ),
+              child: const LoginScreen(),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // GREEN: LoginScreen uses SingleChildScrollView, so content
+      // can scroll when text is scaled up.
+      expect(tester.takeException(), isNull,
+          reason:
+              'Login screen should not overflow at 200% text scale');
+    });
+
+    testWidgets('settings screen handles 200% text scale without overflow',
+        (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(
+                textScaler: TextScaler.linear(2.0),
+              ),
+              child: const SettingsScreen(),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // RED: The Settings user info section uses a Column inside a
+      // Container with a fixed height of 100. At 200% text scale,
+      // the name and email text overflow the 100dp container.
+      //
+      // FIX: Remove the fixed height, or wrap the Column in Expanded.
+      expect(tester.takeException(), isNull,
+          reason:
+              'Settings screen should not overflow at 200% text scale');
+    });
+
+    testWidgets('login screen elements remain visible at 150% text scale',
+        (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(
+                textScaler: TextScaler.linear(1.5),
+              ),
+              child: const LoginScreen(),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // GREEN: At 150%, the scrollable login screen handles scaling.
+      expect(find.text('CheckBank'), findsOneWidget);
+      expect(find.widgetWithText(ElevatedButton, 'Go'), findsOneWidget);
+      expect(find.text('Forgot password?'), findsOneWidget);
+    });
+  });
+}
+```
+
+  </TabItem>
+</Tabs>
+
+### Walking Through the Tests
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Testing the "Go" button (passes)</div>
+
+The `ElevatedButton` on the Login screen uses `padding: EdgeInsets.symmetric(vertical: 14)`. Combined with the text height, the rendered button is well above 48dp. This test passes -- Material widgets generally handle touch targets correctly out of the box.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Testing the email field (passes)</div>
+
+Material `TextField` includes internal padding and a minimum height that comfortably exceeds 48dp. No special effort is needed for standard form fields.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Testing "Forgot password?" (fails)</div>
+
+This is where the bug lives. The Login screen uses a bare `GestureDetector` wrapping a `Text` widget with `bodySmall` styling:
+
+```dart
+GestureDetector(
+  onTap: () { /* ... */ },
+  child: Text(
+    'Forgot password?',
+    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: AppColors.textSecondary,
+        ),
+  ),
+),
+```
+
+The rendered height of `bodySmall` text is roughly 16dp -- far below the 48dp minimum. A user with motor impairments would struggle to tap this link.
+
+  </div>
+</div>
+
+### The Fix
+
+<Tabs>
+  <TabItem value="before" label="🔴 Before (Failing)" default>
+
+```dart title="lib/screens/login_screen.dart (current — buggy)"
+// BUG: GestureDetector with no minimum touch target
+GestureDetector(
+  onTap: () { /* ... */ },
+  child: Text(
+    'Forgot password?',
+    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: AppColors.textSecondary,
+        ),
+  ),
+),
+```
+
+  </TabItem>
+  <TabItem value="after" label="🟢 After (Fixed)">
+
+```dart title="lib/screens/login_screen.dart (fixed)"
+// highlight-next-line
+// FIX: Replace GestureDetector with TextButton (provides 48dp minimum)
+TextButton(
+  onPressed: () { /* ... */ },
+  child: Text(
+    'Forgot password?',
+    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: AppColors.textSecondary,
+        ),
+  ),
+),
+```
+
+Alternatively, if you need to keep the `GestureDetector` for styling reasons:
+
+```dart title="lib/screens/login_screen.dart (alternative fix)"
+// highlight-next-line
+// FIX: Wrap in a ConstrainedBox to enforce minimum tap area
+GestureDetector(
+  onTap: () { /* ... */ },
+  child: ConstrainedBox(
+    constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+    child: Center(
+      child: Text(
+        'Forgot password?',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+      ),
+    ),
+  ),
+),
+```
+
+  </TabItem>
+</Tabs>
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Do Not Edit login_screen.dart</div>
+  <p>As with previous chapters, we leave the bugs in place so the test file continues to demonstrate real failures. The fixes above are shown for learning purposes.</p>
+</div>
+
+---
+
+## Run the Tests
+
+```bash title="Terminal"
+flutter test test/accessibility/sizing_test.dart
+```
+
+You should see output like this:
+
+```
++5 -2: Some tests failed.
+```
+
+Five tests pass. Two tests fail:
+
+- **"forgot password link meets 48dp minimum height"** -- the `GestureDetector` wrapping a `bodySmall` `Text` renders at approximately 16dp tall, well below the 48dp minimum.
+- **"settings screen handles 200% text scale without overflow"** -- the fixed-height Container overflows at 200% text scale (covered in Part 2).
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You have used <code>tester.getSize()</code> to measure the rendered dimensions of interactive elements and caught a genuine touch target failure. The "Forgot password?" link on the Login screen is too small for reliable activation by users with motor impairments.</p>
+</div>
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `tester.getSize(Finder)` | Returns the rendered `Size` of the matched widget in logical pixels (dp) |
+| 48dp minimum | Android / Material Design minimum touch target (WCAG 2.5.8 recommends 24px; platform guidelines recommend 44-48) |
+| `GestureDetector` pitfall | Does not enforce any minimum tap area -- you must add constraints manually |
+| `TextButton` / `ElevatedButton` | Material buttons enforce a minimum 48dp tap area automatically |
+| `ConstrainedBox` | Can enforce `minHeight` and `minWidth` on any widget to meet tap target requirements |
+
+---
+
+## What's Next
+
+Touch targets ensure elements are large enough to tap. But what happens when the user scales up their text? In [Part 2: Text Scaling](/chapters/sizing/text-scaling), you will test that CheckBank's layouts survive 200% text scaling without overflow.

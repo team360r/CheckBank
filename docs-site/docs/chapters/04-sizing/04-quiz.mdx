@@ -1,0 +1,78 @@
+---
+sidebar_position: 3
+slug: /chapters/sizing/quiz
+title: "Quiz: Touch Targets and Text Scaling"
+---
+
+import { Quiz, QuizQuestion } from '@site/src/components/Quiz';
+
+# Quiz: Touch Targets and Text Scaling
+
+<Quiz chapterId="ch04">
+  <QuizQuestion
+    question="What is the minimum recommended touch target size according to Material Design guidelines?"
+    options={[
+      "24 x 24 dp",
+      "36 x 36 dp",
+      "48 x 48 dp",
+      "64 x 64 dp"
+    ]}
+    correctIndex={2}
+    explanation="Material Design guidelines recommend a minimum touch target of 48 x 48 dp. This corresponds to roughly 7mm — the average size of an adult fingertip. WCAG 2.5.8 (AA) requires a lower minimum of 24 x 24 px, but platform guidelines (Android 48dp, iOS 44pt) are the standard to target in mobile apps."
+  />
+  <QuizQuestion
+    question="How do you measure the rendered size of a widget in a Flutter widget test?"
+    options={[
+      "widget.size",
+      "tester.getSize(finder)",
+      "finder.evaluate().first.renderObject.size",
+      "MediaQuery.sizeOf(context)"
+    ]}
+    correctIndex={1}
+    explanation="tester.getSize(finder) returns the rendered Size of the widget matched by the finder. It measures the actual dimensions after layout, not the declared constraints. This is the standard way to verify touch target sizes in widget tests."
+  />
+  <QuizQuestion
+    question="Why does wrapping a Text in a GestureDetector create a touch target problem?"
+    options={[
+      "GestureDetector does not work with Text widgets",
+      "GestureDetector enforces a maximum size of 32dp",
+      "GestureDetector does not enforce any minimum tap area — it takes the size of its child, which for small text is well below 48dp",
+      "GestureDetector blocks accessibility events from reaching the Text"
+    ]}
+    correctIndex={2}
+    explanation="A GestureDetector sizes itself to match its child. If the child is a small Text widget (e.g. bodySmall at ~16dp height), the touch target is only 16dp tall — far below the 48dp minimum. Material buttons like TextButton and ElevatedButton enforce a minimum tap area automatically, which is why they are preferred for interactive text."
+  />
+  <QuizQuestion
+    question="How do you simulate 200% text scaling in a Flutter widget test?"
+    options={[
+      "tester.setTextScale(2.0)",
+      "Wrap the widget in MediaQuery(data: MediaQueryData(textScaler: TextScaler.linear(2.0)), child: ...)",
+      "Set the environment variable FLUTTER_TEXT_SCALE=2.0",
+      "Call Theme.of(context).textTheme.apply(fontSizeFactor: 2.0)"
+    ]}
+    correctIndex={1}
+    explanation="You wrap the widget under test with a MediaQuery that overrides the textScaler. MediaQuery(data: MediaQueryData(textScaler: TextScaler.linear(2.0)), child: yourWidget) applies a 2x text scale to everything inside. All Text widgets that respect MediaQuery (which is the default) will render at double size."
+  />
+  <QuizQuestion
+    question="What does tester.takeException() return when no overflow occurs?"
+    options={[
+      "An empty string",
+      "false",
+      "null",
+      "A FlutterError with message 'No exception'"
+    ]}
+    correctIndex={2}
+    explanation="tester.takeException() returns null when no exception was thrown during the most recent frame. When a RenderFlex overflows, it returns the FlutterError describing the overflow. Testing expect(tester.takeException(), isNull) verifies that no overflow occurred."
+  />
+  <QuizQuestion
+    question="A Container with height: 100 causes overflow at 200% text scale. What is the best fix?"
+    options={[
+      "Set the text scale to 1.0 inside the Container",
+      "Replace height: 100 with constraints: BoxConstraints(minHeight: 100) so the container can grow",
+      "Set overflow: TextOverflow.clip on all Text children",
+      "Reduce the font size to compensate for scaling"
+    ]}
+    correctIndex={1}
+    explanation="Replacing a fixed height with constraints: BoxConstraints(minHeight: 100) allows the container to grow beyond 100dp when its content needs more space. This maintains the minimum visual size at normal scale while gracefully accommodating larger text. Reducing font size or overriding the text scale defeats the purpose of accessibility text scaling."
+  />
+</Quiz>

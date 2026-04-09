@@ -1,0 +1,239 @@
+---
+sidebar_position: 2
+slug: /chapters/sizing/text-scaling
+title: "Part 2: Text Scaling"
+description: "Test layout resilience at 200% text scale"
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Part 2: Text Scaling
+
+In Part 1, you caught an undersized touch target. Now you will test a different dimension of sizing: what happens when the user increases their system text size.
+
+---
+
+## Why Text Scaling Matters
+
+Many users increase their device's text size for readability. Both Android and iOS provide system-level text scaling, and WCAG 1.4.4 (Resize Text) requires that content remains functional when text is scaled up to 200%.
+
+| Platform | Setting Location | Range |
+|----------|-----------------|-------|
+| Android | Settings > Display > Font size | 0.85x to 1.3x (some devices up to 2.0x) |
+| iOS | Settings > Accessibility > Larger Text | Up to ~3.1x with "Larger Accessibility Sizes" |
+| Flutter | `MediaQuery.textScaler` | Any value -- no upper limit |
+
+When a user sets their text scale to 200%, every `Text` widget renders at twice the normal size. If your layout uses fixed heights, unscrollable containers, or rigid `Row` arrangements, the enlarged text will overflow -- either clipping silently or throwing a visible yellow-and-black overflow error.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">The Real-World Impact</div>
+  <p>Text scaling is not an edge case. Research consistently shows that a significant percentage of mobile users adjust their default text size. On iOS, the default text size is not even the smallest option -- many users actively increase it. An app that breaks at 150% or 200% text scale is failing a substantial portion of its user base.</p>
+</div>
+
+---
+
+## The Tool: `MediaQuery` Wrapping
+
+In Flutter widget tests, you can simulate text scaling by wrapping the widget under test with a `MediaQuery` that overrides the `textScaler`:
+
+```dart
+await tester.pumpWidget(
+  MaterialApp(
+    home: MediaQuery(
+      data: const MediaQueryData(
+        textScaler: TextScaler.linear(2.0),
+      ),
+      child: const SettingsScreen(),
+    ),
+  ),
+);
+```
+
+This applies a 2.0x text scale to everything inside the `MediaQuery` widget. Any `Text` widget that respects `MediaQuery.textScalerOf(context)` (which is the default behaviour) will render at double size.
+
+### What `tester.takeException()` Catches
+
+When a `RenderBox` overflows its parent's constraints, Flutter throws a `FlutterError` with the message "A RenderFlex overflowed by X pixels." In a widget test, `tester.takeException()` captures this error. If the return value is non-null, something overflowed.
+
+```dart
+expect(tester.takeException(), isNull,
+    reason: 'Screen should not overflow at 200% text scale');
+```
+
+---
+
+## The Settings Screen Bug
+
+Look at the user info section in `SettingsScreen`:
+
+```dart title="lib/screens/settings_screen.dart (lines 39-81)"
+Container(
+  height: 100,  // <-- Fixed height!
+  padding: const EdgeInsets.all(16),
+  child: Row(
+    children: [
+      CircleAvatar(radius: 32, /* ... */),
+      const SizedBox(width: 16),
+      Column(  // <-- Not wrapped in Expanded or Flexible
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(mockUser.name, /* ... */),
+          const SizedBox(height: 4),
+          Text(mockUser.email, /* ... */),
+        ],
+      ),
+    ],
+  ),
+),
+```
+
+At normal text scale, "Alex Johnson" and "alex@checkbank.dev" fit comfortably inside the 100dp container. At 200% text scale, each line of text doubles in height and width. The `Column` needs roughly 120dp of vertical space but is constrained to 100dp minus padding -- overflow.
+
+There are two independent problems:
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Fixed-height container</div>
+
+The `Container(height: 100)` sets a rigid vertical constraint. At 200% text scale, the content inside exceeds this height. The fix is to remove the fixed height and let the container size itself to its content, or use `constraints: BoxConstraints(minHeight: 100)` to set a minimum without capping the maximum.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Unwrapped Column in a Row</div>
+
+The `Column` is a direct child of the `Row` without being wrapped in `Expanded` or `Flexible`. This means it has unbounded width. At 200% scale, the email text "alex@checkbank.dev" may also overflow horizontally. Wrapping the `Column` in `Expanded` constrains it to the remaining width after the `CircleAvatar` and `SizedBox`.
+
+  </div>
+</div>
+
+### The Fix
+
+<Tabs>
+  <TabItem value="before" label="🔴 Before (Failing)" default>
+
+```dart title="lib/screens/settings_screen.dart (current — buggy)"
+Container(
+  height: 100,  // Fixed height — breaks at large text
+  padding: const EdgeInsets.all(16),
+  child: Row(
+    children: [
+      CircleAvatar(radius: 32, /* ... */),
+      const SizedBox(width: 16),
+      Column(  // Not wrapped — unconstrained width
+        children: [ /* name + email */ ],
+      ),
+    ],
+  ),
+),
+```
+
+  </TabItem>
+  <TabItem value="after" label="🟢 After (Fixed)">
+
+```dart title="lib/screens/settings_screen.dart (fixed)"
+// highlight-next-line
+// FIX: Remove fixed height, wrap Column in Expanded
+Container(
+  constraints: const BoxConstraints(minHeight: 100),
+  padding: const EdgeInsets.all(16),
+  child: Row(
+    children: [
+      CircleAvatar(radius: 32, /* ... */),
+      const SizedBox(width: 16),
+      // highlight-next-line
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [ /* name + email */ ],
+        ),
+      ),
+    ],
+  ),
+),
+```
+
+  </TabItem>
+</Tabs>
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Do Not Edit settings_screen.dart</div>
+  <p>We leave the bugs in place so the test continues to demonstrate the failure. The fix is shown for learning purposes only.</p>
+</div>
+
+---
+
+## The Login Screen (Passes)
+
+The Login screen uses `SingleChildScrollView` as its body, which means content can scroll vertically when it grows beyond the screen height. At 200% text scale, the text is larger and the layout is taller, but the scroll view accommodates it gracefully.
+
+This is a good pattern to follow: **always make your primary content scrollable**. A `ListView`, `SingleChildScrollView`, or `CustomScrollView` gives your layout room to grow when text is scaled up.
+
+---
+
+## Run the Tests
+
+If you have not already added the text scaling tests from Part 1, the full test file includes both the touch target and text scaling groups.
+
+```bash title="Terminal"
+flutter test test/accessibility/sizing_test.dart
+```
+
+Expected output:
+
+```
++5 -2: Some tests failed.
+```
+
+Five tests pass. Two tests fail:
+
+- **"forgot password link meets 48dp minimum height"** from Part 1 (touch target too small)
+- **"settings screen handles 200% text scale without overflow"** (fixed-height container overflows at 200%)
+
+The passing text scaling tests show:
+
+- **Login at 200%** -- PASS (scrollable layout handles scaling gracefully)
+- **Login at 150%** -- PASS (all elements remain findable)
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You can now test both dimensions of sizing: physical tap targets (Part 1) and text scaling resilience (Part 2). The <code>MediaQuery</code> wrapping technique lets you simulate any text scale factor in widget tests, and <code>tester.takeException()</code> catches overflow errors that would break the layout for users who enlarge their text.</p>
+</div>
+
+---
+
+## Common Text Scaling Fixes
+
+| Problem | Fix |
+|---------|-----|
+| Fixed-height container | Replace `height: X` with `constraints: BoxConstraints(minHeight: X)` |
+| Text overflow in Row | Wrap the `Text` parent in `Expanded` or `Flexible` |
+| Non-scrollable screen | Wrap content in `SingleChildScrollView` or use `ListView` |
+| Hardcoded font sizes | Use `Theme.of(context).textTheme` values that respect scaling |
+| `maxLines` without `overflow` | Add `overflow: TextOverflow.ellipsis` so truncation is graceful |
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `MediaQuery(data: MediaQueryData(textScaler: ...))` | Wraps a widget to simulate a specific text scale factor in tests |
+| `TextScaler.linear(2.0)` | Scales all text by 2x, simulating a user who has doubled their system text size |
+| `tester.takeException()` | Captures any exception thrown during rendering, including `RenderFlex` overflow errors |
+| WCAG 1.4.4 (Resize Text) | Content must remain functional when text is resized up to 200% |
+| `Expanded` / `Flexible` | Constrain children within a `Row` or `Column` to prevent overflow |
+
+---
+
+## What's Next
+
+Test your understanding of touch targets and text scaling in the [Chapter 4 Quiz](/chapters/sizing/quiz).
