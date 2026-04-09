@@ -1,0 +1,377 @@
+---
+sidebar_position: 2
+slug: /chapters/tda/green
+title: "Part 2: Make It Green"
+description: "Build the Quick Pay widget to pass every accessibility test"
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Part 2: Make It Green
+
+In Part 1, you wrote 4 accessibility tests for a widget that does not exist. Now you will build `lib/widgets/quick_pay.dart` to make every test pass.
+
+---
+
+## The GREEN Phase
+
+The goal is to make each test pass, one at a time. In practice, you would run the tests after each change to see the next failure. Here, we will walk through the full implementation and explain how each part satisfies a test.
+
+### Step 1: Create the File
+
+Create `lib/widgets/quick_pay.dart`. Start with the basic structure:
+
+```dart title="lib/widgets/quick_pay.dart"
+import 'package:flutter/material.dart';
+
+class QuickPay extends StatefulWidget {
+  const QuickPay({super.key});
+
+  @override
+  State<QuickPay> createState() => _QuickPayState();
+}
+
+class _QuickPayState extends State<QuickPay> {
+  static const _payees = [
+    _Payee(name: 'John Smith', initials: 'JS'),
+    _Payee(name: 'Sarah Connor', initials: 'SC'),
+    _Payee(name: 'Maria Garcia', initials: 'MG'),
+  ];
+
+  String? _confirmationMessage;
+
+  void _pay(_Payee payee) {
+    setState(() {
+      _confirmationMessage = 'Payment sent to ${payee.name}';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ... widget tree goes here
+  }
+}
+
+class _Payee {
+  final String name;
+  final String initials;
+  const _Payee({required this.name, required this.initials});
+}
+```
+
+The `_payees` list defines 3 frequent payees. The `_confirmationMessage` state tracks whether a payment was initiated. This is just the data model -- the tests will not pass until we build the widget tree with correct semantics.
+
+---
+
+### Step 2: Add the Heading (passes test 1)
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Semantics(header: true) for the heading</div>
+
+Test 1 expects a semantics node with label "Quick Pay" that has the `isHeader` flag. A plain `Text('Quick Pay')` would show the text but not mark it as a heading. We need the `Semantics` wrapper:
+
+```dart
+Semantics(
+  header: true,
+  child: Text(
+    'Quick Pay',
+    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+        ),
+  ),
+),
+```
+
+The `header: true` parameter sets `SemanticsFlag.isHeader` on this node. Screen readers announce it as a heading, and users can jump to it using heading navigation gestures.
+
+  </div>
+</div>
+
+---
+
+### Step 3: Build the Payee Cards (passes tests 2 and 3)
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Semantics(button: true, label: ...) for each card</div>
+
+Test 2 expects each card to have a semantics label like "Pay John Smith". Test 3 expects each card to have `isButton` and a tap action. Here is the key pattern:
+
+```dart
+Semantics(
+  button: true,
+  label: 'Pay ${payee.name}',
+  child: InkWell(
+    onTap: onPay,
+    borderRadius: BorderRadius.circular(12),
+    child: ExcludeSemantics(
+      child: Container(
+        // ... visual content (avatar, name, "Pay" text)
+      ),
+    ),
+  ),
+),
+```
+
+Three things to notice:
+
+1. **`Semantics(button: true, label: ...)`** -- the outer wrapper sets the button role and provides a complete label. Screen readers announce "Pay John Smith, button".
+2. **`InkWell(onTap: ...)`** -- provides the tap action (`SemanticsAction.tap`). The `InkWell` also gives visual tap feedback.
+3. **`ExcludeSemantics`** -- the child tree contains text like "John Smith" and "Pay" as separate `Text` widgets. Without `ExcludeSemantics`, screen readers would announce those as separate nodes, fragmenting the experience. By excluding the children and providing a single descriptive label on the parent `Semantics` widget, the user hears one coherent announcement.
+
+  </div>
+</div>
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Why Not MergeSemantics?</div>
+  <p><code>MergeSemantics</code> merges all child semantics nodes into one. This works when the child labels naturally combine into a meaningful phrase. But here, the children are "JS" (initials), "John Smith" (name), and "Pay" (action) -- merging them would produce "JS John Smith Pay", which is not meaningful. Using <code>Semantics(label: ...)</code> with <code>ExcludeSemantics</code> gives us full control over the announced text.</p>
+</div>
+
+---
+
+### Step 4: Add the Confirmation Live Region (passes test 4)
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Semantics(liveRegion: true) for the confirmation</div>
+
+Test 4 taps the first payee, then checks that a "Payment sent" text appears inside a live region. The `_pay` method sets `_confirmationMessage`, and the `build` method conditionally renders it:
+
+```dart
+if (_confirmationMessage != null) ...[
+  const SizedBox(height: 12),
+  Semantics(
+    liveRegion: true,
+    child: Text(
+      _confirmationMessage!,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Colors.green.shade700,
+            fontWeight: FontWeight.w600,
+          ),
+    ),
+  ),
+],
+```
+
+When the user taps "Pay John Smith", `_confirmationMessage` becomes "Payment sent to John Smith". The `Semantics(liveRegion: true)` wrapper ensures the screen reader announces this text immediately -- the user knows the payment succeeded without navigating to the confirmation.
+
+  </div>
+</div>
+
+---
+
+## The Complete Widget
+
+<Tabs>
+  <TabItem value="widget" label="Full Widget" default>
+
+```dart title="lib/widgets/quick_pay.dart"
+import 'package:flutter/material.dart';
+
+class QuickPay extends StatefulWidget {
+  const QuickPay({super.key});
+
+  @override
+  State<QuickPay> createState() => _QuickPayState();
+}
+
+class _QuickPayState extends State<QuickPay> {
+  static const _payees = [
+    _Payee(name: 'John Smith', initials: 'JS'),
+    _Payee(name: 'Sarah Connor', initials: 'SC'),
+    _Payee(name: 'Maria Garcia', initials: 'MG'),
+  ];
+
+  String? _confirmationMessage;
+
+  void _pay(_Payee payee) {
+    setState(() {
+      _confirmationMessage = 'Payment sent to ${payee.name}';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Heading — marked as a header for screen readers
+          Semantics(
+            header: true,
+            child: Text(
+              'Quick Pay',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Payee cards
+          Row(
+            children: _payees.map((payee) {
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: _PayeeCard(
+                    payee: payee,
+                    onPay: () => _pay(payee),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+
+          // Confirmation — live region for announcement
+          if (_confirmationMessage != null) ...[
+            const SizedBox(height: 12),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                _confirmationMessage!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.green.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PayeeCard extends StatelessWidget {
+  final _Payee payee;
+  final VoidCallback onPay;
+
+  const _PayeeCard({required this.payee, required this.onPay});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Pay ${payee.name}',
+      child: InkWell(
+        onTap: onPay,
+        borderRadius: BorderRadius.circular(12),
+        child: ExcludeSemantics(
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              vertical: 16, horizontal: 8),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  child: Text(payee.initials),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  payee.name,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Pay',
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelSmall
+                      ?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Payee {
+  final String name;
+  final String initials;
+  const _Payee({required this.name, required this.initials});
+}
+```
+
+  </TabItem>
+</Tabs>
+
+---
+
+## Run the Tests
+
+```bash title="Terminal"
+flutter test test/accessibility/tda_quick_pay_test.dart
+```
+
+Expected output:
+
+```
++4: All tests passed!
+```
+
+All 4 tests pass. The widget was built to satisfy every accessibility requirement encoded in the tests.
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You have completed the full TDA cycle: requirements became tests, tests became specifications, and the widget was built to fulfill those specifications. Every accessibility feature — heading, descriptive labels, button role, live region — was required by a test before the code existed.</p>
+</div>
+
+---
+
+## Why TDA Works
+
+| Advantage | Explanation |
+|-----------|------------|
+| Accessibility is a requirement, not an afterthought | Tests define what "accessible" means before any code is written |
+| Bugs cannot be introduced | If someone removes `Semantics(header: true)`, the test fails immediately |
+| Documentation through tests | The test file describes exactly what accessibility features the widget must have |
+| Confidence to refactor | You can restructure the widget tree knowing the tests will catch any regression |
+
+### When to Use TDA
+
+TDA works best for **new widgets** where you have clear accessibility requirements upfront. It is less practical for:
+
+- Fixing bugs in existing code (use test-after, as in Chapters 1-6)
+- Exploratory prototyping where requirements are unclear
+- Simple widgets with obvious accessibility (a `Text` widget does not need TDA)
+
+Use TDA when the widget has interactive elements, dynamic state, or complex semantics. If you find yourself asking "what should the screen reader announce here?", TDA forces you to answer that question first.
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| TDA cycle | RED (write failing tests) -> GREEN (build widget to pass) -> REFACTOR (clean up) |
+| `Semantics(header: true)` | Marks a widget as a heading in the accessibility tree |
+| `Semantics(button: true, label: ...)` | Gives a widget the button role with a custom label |
+| `ExcludeSemantics` | Removes child widgets from the semantics tree -- use when a parent `Semantics` provides a better label |
+| `Semantics(liveRegion: true)` | Marks a widget as a live region that screen readers monitor for content changes |
+
+---
+
+## What's Next
+
+Test your understanding of Test-Driven Accessibility in the [Chapter 8 Quiz](/chapters/tda/quiz).

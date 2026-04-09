@@ -1,0 +1,78 @@
+---
+sidebar_position: 3
+slug: /chapters/tda/quiz
+title: "Quiz: Test-Driven Accessibility"
+---
+
+import { Quiz, QuizQuestion } from '@site/src/components/Quiz';
+
+# Quiz: Test-Driven Accessibility
+
+<Quiz chapterId="ch08">
+  <QuizQuestion
+    question="What is the correct order of steps in Test-Driven Accessibility (TDA)?"
+    options={[
+      "Build the widget, write tests, refactor",
+      "Write accessibility tests, build the widget to pass them, refactor",
+      "Write tests, refactor the tests, then build the widget",
+      "Build the widget, refactor, then write tests to verify"
+    ]}
+    correctIndex={1}
+    explanation="TDA follows the red-green-refactor cycle: first write tests that define the accessibility requirements (RED — they fail because the widget does not exist), then build the widget to pass every test (GREEN), then refactor for clean code while keeping tests green (REFACTOR)."
+  />
+  <QuizQuestion
+    question="Why does writing tests before code catch accessibility bugs earlier?"
+    options={[
+      "Tests run faster when written first",
+      "Accessibility requirements are defined upfront as specifications — bugs cannot be introduced because the code must satisfy the tests from the start",
+      "The compiler optimises test-first code differently",
+      "Flutter's test framework has special support for TDA"
+    ]}
+    correctIndex={1}
+    explanation="When tests come first, accessibility is a requirement, not an afterthought. The widget must pass every accessibility test before it is considered complete. This means accessibility bugs like missing labels, wrong roles, or absent live regions are caught at build time — they never make it into the codebase in the first place."
+  />
+  <QuizQuestion
+    question="In the Quick Pay widget, why is ExcludeSemantics used inside the payee card?"
+    options={[
+      "To improve rendering performance",
+      "To prevent child text widgets from creating separate semantics nodes — the parent Semantics widget already provides a complete, descriptive label",
+      "To hide the card from screen readers entirely",
+      "To make the card non-tappable"
+    ]}
+    correctIndex={1}
+    explanation="Without ExcludeSemantics, screen readers would announce the avatar initials, name, and 'Pay' text as separate items. With ExcludeSemantics, the children are removed from the semantics tree, and the parent Semantics(label: 'Pay John Smith', button: true) provides a single, coherent announcement. The user hears 'Pay John Smith, button' instead of navigating through fragments."
+  />
+  <QuizQuestion
+    question="When is TDA most appropriate?"
+    options={[
+      "Always — every widget should use TDA",
+      "For fixing bugs in existing code",
+      "For new widgets with interactive elements, dynamic state, or complex semantics where accessibility requirements can be defined upfront",
+      "Only for widgets that contain images"
+    ]}
+    correctIndex={2}
+    explanation="TDA works best for new widgets where you have clear accessibility requirements. It is less practical for fixing existing bugs (use test-after) or simple widgets with obvious accessibility. Use TDA when the widget has interactive elements, dynamic state changes, or complex semantics — situations where asking 'what should the screen reader announce?' has a non-obvious answer."
+  />
+  <QuizQuestion
+    question="What does Semantics(button: true, label: 'Pay John Smith') do?"
+    options={[
+      "Creates a visible button with the text 'Pay John Smith'",
+      "Announces the node as 'Pay John Smith, button' to screen readers and sets the button role in the accessibility tree",
+      "Makes the widget tappable — without this, onTap would not work",
+      "Adds a tooltip that appears on long press"
+    ]}
+    correctIndex={1}
+    explanation="Semantics(button: true, label: ...) configures the accessibility tree — it tells screen readers to announce the element as a button with the given label. It does not affect the visual rendering or add tap behaviour (that comes from InkWell or GestureDetector). The label and role are purely for assistive technologies."
+  />
+  <QuizQuestion
+    question="After tapping a Pay button, the confirmation text appears but is not in a live region. What happens for screen reader users?"
+    options={[
+      "The screen reader announces 'Payment sent to John Smith' automatically",
+      "Nothing is announced — the user does not know if the payment went through and must manually navigate to find the confirmation text",
+      "The screen reader moves focus to the confirmation text",
+      "The screen reader reads the entire screen from the top"
+    ]}
+    correctIndex={1}
+    explanation="Without a live region (Semantics(liveRegion: true)), the screen reader does not monitor the confirmation text for changes. When it appears, nothing is announced. The user's focus stays on the Pay button. They have no audible feedback that the payment succeeded. Wrapping the confirmation in a live region ensures the screen reader announces it immediately."
+  />
+</Quiz>

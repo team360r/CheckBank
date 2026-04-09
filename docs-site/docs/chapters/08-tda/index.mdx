@@ -5,12 +5,282 @@ title: "Chapter 8: Test-Driven Accessibility"
 description: "Write tests before code — red, green, refactor for accessibility"
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Chapter 8: Test-Driven Accessibility
 
-> *Coming soon*
+> *"In Chapters 1-6, you found bugs in existing code. Now, what if you wrote the accessibility tests first -- so the bugs never exist?"*
 
-**Estimated time:** ~25 minutes | **Focus:** TDA workflow | **Branch:** `chapter-8-tda`
+**Estimated time:** ~25 minutes | **Focus:** New Quick Pay widget | **Branch:** `chapter-8-tda`
 
 ---
 
-Content for this chapter is being written. Check back soon!
+## What Is Test-Driven Accessibility?
+
+In every chapter so far, the workflow has been:
+
+1. Look at existing code
+2. Write tests that check accessibility properties
+3. Watch tests fail because the code has bugs
+4. Show the fix (but leave the bug in place for learning)
+
+Test-Driven Accessibility (TDA) flips this:
+
+1. Define accessibility requirements for a new widget
+2. Write ALL the tests first -- before the widget exists
+3. Run the tests -- they all fail (RED)
+4. Build the widget to pass every test (GREEN)
+5. Refactor for clean code while keeping tests green (REFACTOR)
+
+This is the standard red-green-refactor cycle from Test-Driven Development (TDD), applied specifically to accessibility. The key insight is that by writing accessibility tests first, you define the accessible behaviour as a requirement, not an afterthought.
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">TDA vs. Test-After</div>
+  <p>When you test after building, accessibility is an audit -- "did we get it right?" When you test before building, accessibility is a specification -- "this is what right looks like." The tests become the contract that the implementation must fulfill.</p>
+</div>
+
+---
+
+## The Requirement: Quick Pay Widget
+
+Imagine the product team asks for a new widget: **Quick Pay**. It shows 3 frequent payees as tappable cards, each with a "Pay" button.
+
+The accessibility requirements are:
+
+| Requirement | Why |
+|-------------|-----|
+| A heading labelled "Quick Pay" | Screen readers use headings to navigate page structure |
+| Each payee card has a descriptive label like "Pay John Smith" | Screen reader users need to know who they are paying |
+| Each card has button semantics and a tap action | Cards should be announced as buttons and respond to activation |
+| After tapping Pay, a confirmation message appears in a live region | Screen readers must announce the result without the user navigating to it |
+
+These are the tests we will write. The widget does not exist yet.
+
+---
+
+## Writing the Tests First
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Create <code>test/accessibility/tda_quick_pay_test.dart</code> with the code below. Every test will fail because the <code>QuickPay</code> widget does not exist. That is the point -- RED comes first.</p>
+</div>
+
+<Tabs>
+  <TabItem value="tests" label="Full Test File" default>
+
+```dart title="test/accessibility/tda_quick_pay_test.dart"
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:checkbank/widgets/quick_pay.dart';
+
+void main() {
+  group('Quick Pay — accessibility requirements', () {
+    late SemanticsHandle handle;
+
+    testWidgets('has a heading', (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: Scaffold(body: QuickPay())),
+        ),
+      );
+
+      // The heading text "Quick Pay" should exist
+      final heading = find.bySemanticsLabel('Quick Pay');
+      expect(heading, findsOneWidget,
+          reason: 'Quick Pay heading should exist');
+
+      // It should be marked as a header in semantics
+      final semantics = tester.getSemantics(heading);
+      expect(
+        semantics.getSemanticsData().hasFlag(SemanticsFlag.isHeader),
+        isTrue,
+        reason:
+            'Quick Pay should be marked as a heading for screen readers',
+      );
+
+      handle.dispose();
+    });
+
+    testWidgets('each payee has a descriptive label', (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: Scaffold(body: QuickPay())),
+        ),
+      );
+
+      // Each payee card should have a merged label like "Pay John Smith"
+      expect(
+        find.bySemanticsLabel(RegExp(r'^Pay .+')),
+        findsNWidgets(3),
+        reason: 'Each of the 3 payees should have a '
+            '"Pay <name>" label',
+      );
+
+      handle.dispose();
+    });
+
+    testWidgets('pay button has button role and tap action',
+        (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: Scaffold(body: QuickPay())),
+        ),
+      );
+
+      final payButtons = find.bySemanticsLabel(RegExp(r'^Pay .+'));
+      expect(payButtons, findsNWidgets(3));
+
+      // Each should be a button with a tap action
+      for (var i = 0; i < 3; i++) {
+        final semantics = tester.getSemantics(payButtons.at(i));
+        final data = semantics.getSemanticsData();
+
+        expect(
+          data.hasFlag(SemanticsFlag.isButton),
+          isTrue,
+          reason: 'Payee card $i should have button semantics',
+        );
+        expect(
+          data.hasAction(SemanticsAction.tap),
+          isTrue,
+          reason: 'Payee card $i should be tappable',
+        );
+      }
+
+      handle.dispose();
+    });
+
+    testWidgets('payment confirmation uses live region',
+        (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: Scaffold(body: QuickPay())),
+        ),
+      );
+
+      // Tap the first payee's Pay button
+      final payButtons = find.bySemanticsLabel(RegExp(r'^Pay .+'));
+      await tester.tap(payButtons.first);
+      await tester.pump();
+
+      // A confirmation message should appear
+      final confirmation = find.textContaining('Payment sent');
+      expect(confirmation, findsOneWidget,
+          reason:
+              'Confirmation text should appear after tapping Pay');
+
+      // The confirmation should be in a live region
+      final semantics = tester.getSemantics(confirmation);
+      expect(
+        semantics
+            .getSemanticsData()
+            .hasFlag(SemanticsFlag.isLiveRegion),
+        isTrue,
+        reason: 'Confirmation should be a live region so screen '
+            'readers announce it automatically',
+      );
+
+      handle.dispose();
+    });
+  });
+}
+```
+
+  </TabItem>
+</Tabs>
+
+### Walking Through Each Test
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Test 1: Has a heading</div>
+
+This test checks two things: the text "Quick Pay" exists, and it is marked as a heading in the semantics tree (`SemanticsFlag.isHeader`). Screen reader users rely on headings to understand page structure and jump between sections.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Test 2: Each payee has a descriptive label</div>
+
+This test uses `find.bySemanticsLabel(RegExp(r'^Pay .+'))` to find semantics nodes with labels starting with "Pay ". It expects exactly 3 matches -- one per payee. This ensures each card has a meaningful label that includes the payee's name, not just "button" or "card".
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Test 3: Button role and tap action</div>
+
+Each payee card should be announced as a "button" by screen readers and should respond to tap activation. This test checks `SemanticsFlag.isButton` and `SemanticsAction.tap` on each of the 3 payee nodes.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">4</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Test 4: Live region for confirmation</div>
+
+After tapping a Pay button, a confirmation message should appear. This test taps the first payee, then checks that:
+1. Text containing "Payment sent" appears
+2. That text is in a live region (`SemanticsFlag.isLiveRegion`)
+
+Without the live region, a screen reader user taps "Pay" and hears nothing -- they do not know if the payment went through.
+
+  </div>
+</div>
+
+---
+
+## The RED Phase
+
+At this point, if you try to run the tests, they fail immediately -- not just with assertion failures, but with a compilation error:
+
+```
+Error: Could not resolve the package 'checkbank' in
+'package:checkbank/widgets/quick_pay.dart'
+```
+
+The file `lib/widgets/quick_pay.dart` does not exist. The import fails. All 4 tests are RED.
+
+This is exactly the TDA workflow. The tests define the requirements. The next step is to build the widget to satisfy them.
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You have written 4 accessibility tests for a widget that does not exist. Each test encodes a specific accessibility requirement: heading, descriptive labels, button role, and live region confirmation. In Part 2, you will build the widget to make every test pass.</p>
+</div>
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| TDA (Test-Driven Accessibility) | Write accessibility tests before building the widget -- tests define the accessible behaviour |
+| RED phase | All tests fail because the widget does not exist yet |
+| `find.bySemanticsLabel(RegExp(...))` | Finds widgets by their semantics label using a regular expression pattern |
+| `SemanticsFlag.isHeader` | Marks a node as a heading in the accessibility tree |
+| `SemanticsFlag.isButton` | Marks a node as a button that screen readers announce with the "button" role |
+| `SemanticsFlag.isLiveRegion` | Marks a node as a live region that screen readers monitor for changes |
+
+---
+
+## What's Next
+
+In [Part 2: Make It Green](/chapters/tda/green), you will build the `QuickPay` widget step by step, watching each test turn from red to green.
