@@ -5,12 +5,316 @@ title: "Chapter 3: Contrast on Trial"
 description: "Build a WCAG contrast checker and test every theme colour"
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Chapter 3: Contrast on Trial
 
-> *Coming soon*
+> *"Design is not just what it looks like. Design is how it works -- and if you cannot see it, it does not work at all."*
 
-**Estimated time:** ~25 minutes | **Focus:** Theme colours | **Branch:** `chapter-3-contrast`
+**Estimated time:** ~25 minutes | **Focus:** Theme + Settings | **Branch:** `chapter-3-contrast`
 
 ---
 
-Content for this chapter is being written. Check back soon!
+## Why Contrast Matters
+
+Roughly 1 in 12 men and 1 in 200 women have some form of colour vision deficiency. But contrast is not only a colour-blindness concern. Low-contrast text becomes invisible in bright sunlight, on cheap displays, or when screen brightness is turned down to save battery.
+
+WCAG 2.1 **Success Criterion 1.4.3 — Contrast (Minimum)** defines precise thresholds:
+
+| Category | Minimum Ratio | Applies To |
+|----------|--------------|------------|
+| **AA Normal** | **4.5 : 1** | Text smaller than 18pt (or smaller than 14pt bold) |
+| **AA Large** | **3.0 : 1** | Text 18pt and above (or 14pt bold and above) |
+| **AAA Enhanced** | **7.0 : 1** | Enhanced readability for normal text |
+
+These ratios are not arbitrary. They were derived from research on visual acuity and the luminance sensitivity of the human eye. A 4.5:1 ratio ensures that even users with moderately low vision (roughly 20/40 acuity) can read normal-sized text.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Why This Matters</div>
+  <p>Contrast failures are the single most common WCAG violation found in accessibility audits. The WebAIM Million report consistently finds that over 80% of home pages have at least one low-contrast text instance. Unlike missing labels, contrast problems affect <strong>everyone</strong> in the wrong lighting conditions.</p>
+</div>
+
+---
+
+## Building the Contrast Utilities
+
+Before you can test colours programmatically, you need two utility functions: one that computes how bright a colour appears to the human eye, and one that computes the ratio between two colours.
+
+### The WCAG Luminance Formula
+
+The human eye is not equally sensitive to red, green, and blue. Green light appears far brighter than blue light of the same intensity. The WCAG relative luminance formula accounts for this by weighting each channel differently.
+
+The formula has two steps:
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Linearise each sRGB channel</div>
+
+sRGB values encode brightness non-linearly (gamma correction). Before we can do physics-based calculations, we must convert each channel from sRGB to linear light:
+
+```
+if channel <= 0.04045:
+    linear = channel / 12.92
+else:
+    linear = ((channel + 0.055) / 1.055) ^ 2.4
+```
+
+This inverse gamma function converts the perceptual encoding back to physical light intensity.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Compute the weighted sum</div>
+
+Once each channel is linearised, the relative luminance is:
+
+```
+L = 0.2126 * R + 0.7152 * G + 0.0722 * B
+```
+
+Green dominates (71.52%) because the human eye has far more green-sensitive cone cells. Blue contributes only 7.22%.
+
+  </div>
+</div>
+
+### The Contrast Ratio Formula
+
+With luminance values for two colours, the contrast ratio is:
+
+```
+ratio = (L_lighter + 0.05) / (L_darker + 0.05)
+```
+
+The 0.05 offset prevents division by zero (pure black has luminance 0) and models the fact that even a "black" display emits some light. The result ranges from 1:1 (identical colours) to 21:1 (black on white).
+
+---
+
+## Writing the Test File
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Create <code>test/accessibility/contrast_test.dart</code> with the code below. Two tests will <strong>fail</strong> against the current theme -- that is the point. You are writing the "red" phase of red-green-refactor.</p>
+</div>
+
+<Tabs>
+  <TabItem value="failing" label="🔴 Full Test File" default>
+
+```dart title="test/accessibility/contrast_test.dart"
+import 'dart:math' as math;
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:checkbank/theme/app_colors.dart';
+
+// ---------------------------------------------------------------------------
+// WCAG contrast ratio utilities
+// ---------------------------------------------------------------------------
+
+/// Calculates the relative luminance of a [Color] per WCAG 2.1 formula.
+double _relativeLuminance(Color color) {
+  double linearise(double component) {
+    final c = component;
+    return c <= 0.04045
+        ? c / 12.92
+        : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
+  }
+
+  final r = linearise(color.r);
+  final g = linearise(color.g);
+  final b = linearise(color.b);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/// Returns the contrast ratio between two colours.
+double contrastRatio(Color a, Color b) {
+  final l1 = _relativeLuminance(a);
+  final l2 = _relativeLuminance(b);
+  final lighter = math.max(l1, l2);
+  final darker = math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+// ---------------------------------------------------------------------------
+// WCAG thresholds
+// ---------------------------------------------------------------------------
+
+const double kWcagAANormal = 4.5;
+const double kWcagAALarge = 3.0;
+const double kWcagAAA = 7.0;
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+void main() {
+  group('CheckBank theme — WCAG AA contrast', () {
+    test('primary on white meets AA for large text', () {
+      final ratio = contrastRatio(AppColors.primary, AppColors.surface);
+      expect(ratio, greaterThanOrEqualTo(kWcagAALarge),
+          reason:
+              'Primary (#00897B) on white: ${ratio.toStringAsFixed(2)}:1'
+              ' — needs >= 3:1 for large text');
+    });
+
+    test('textPrimary on white meets AA for normal text', () {
+      final ratio = contrastRatio(AppColors.textPrimary, AppColors.surface);
+      expect(ratio, greaterThanOrEqualTo(kWcagAANormal),
+          reason:
+              'textPrimary (#212121) on white:'
+              ' ${ratio.toStringAsFixed(2)}:1');
+    });
+
+    test('textSecondary on white meets AA for normal text', () {
+      final ratio = contrastRatio(AppColors.textSecondary, AppColors.surface);
+      expect(ratio, greaterThanOrEqualTo(kWcagAANormal),
+          reason:
+              'textSecondary (#B0B0B0) on white:'
+              ' ${ratio.toStringAsFixed(2)}:1 — needs >= 4.5:1');
+    });
+
+    test('textDisabled on white meets AA for normal text', () {
+      final ratio = contrastRatio(AppColors.textDisabled, AppColors.surface);
+      expect(ratio, greaterThanOrEqualTo(kWcagAANormal),
+          reason:
+              'textDisabled (#D5D5D5) on white:'
+              ' ${ratio.toStringAsFixed(2)}:1 — needs >= 4.5:1');
+    });
+
+    test('error on white meets AA for large text', () {
+      final ratio = contrastRatio(AppColors.error, AppColors.surface);
+      expect(ratio, greaterThanOrEqualTo(kWcagAALarge),
+          reason:
+              'error (#D32F2F) on white: ${ratio.toStringAsFixed(2)}:1'
+              ' — needs >= 3:1 for large text');
+    });
+
+    test('success on white meets AA for large text', () {
+      final ratio = contrastRatio(AppColors.success, AppColors.surface);
+      expect(ratio, greaterThanOrEqualTo(kWcagAALarge),
+          reason:
+              'success (#388E3C) on white: ${ratio.toStringAsFixed(2)}:1'
+              ' — needs >= 3:1 for large text');
+    });
+  });
+
+  group('Contrast ratio utility — sanity checks', () {
+    test('identical colours have contrast ratio of 1:1', () {
+      final ratio = contrastRatio(Colors.black, Colors.black);
+      expect(ratio, closeTo(1.0, 0.001));
+    });
+
+    test('black on white has maximum contrast ratio (~21:1)', () {
+      final ratio = contrastRatio(Colors.black, Colors.white);
+      expect(ratio, greaterThan(20.0));
+    });
+
+    test('contrast ratio is symmetric (order does not matter)', () {
+      final ab = contrastRatio(AppColors.primary, AppColors.surface);
+      final ba = contrastRatio(AppColors.surface, AppColors.primary);
+      expect(ab, closeTo(ba, 0.001));
+    });
+  });
+}
+```
+
+  </TabItem>
+</Tabs>
+
+### Walking Through the Utilities
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title"><code>_relativeLuminance(Color)</code></div>
+
+The function is prefixed with an underscore -- it is private to the test file. It reads each channel from Flutter's `Color` object using `.r`, `.g`, and `.b` (which return values from 0.0 to 1.0 in modern Flutter). Each channel is linearised through the inverse gamma function, then combined with the WCAG weighting.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title"><code>contrastRatio(Color, Color)</code></div>
+
+This function is public (no underscore) so it could be imported by other test files. It computes the luminance of both colours, determines which is lighter, and applies the contrast formula. The `math.max` / `math.min` calls ensure the ratio is always >= 1 regardless of argument order.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">The threshold constants</div>
+
+Three named constants make the tests self-documenting. When you read `greaterThanOrEqualTo(kWcagAANormal)`, you immediately know which WCAG threshold is being tested. This is far clearer than a magic number `4.5` scattered through the file.
+
+  </div>
+</div>
+
+### Walking Through the Tests
+
+The tests cover every foreground colour in `AppColors` against the white surface:
+
+| Colour | Hex | Expected Ratio | Threshold | Result |
+|--------|-----|---------------|-----------|--------|
+| `primary` | #00897B | ~4.32:1 | 3.0 (large) | PASS |
+| `textPrimary` | #212121 | ~16.10:1 | 4.5 (normal) | PASS |
+| `textSecondary` | #B0B0B0 | ~2.17:1 | 4.5 (normal) | **FAIL** |
+| `textDisabled` | #D5D5D5 | ~1.47:1 | 4.5 (normal) | **FAIL** |
+| `error` | #D32F2F | ~5.76:1 | 3.0 (large) | PASS |
+| `success` | #388E3C | ~4.12:1 | 3.0 (large) | PASS |
+
+The utility sanity checks verify that the formula itself is correct:
+- **Identical colours** produce exactly 1:1 (no contrast between the same colour).
+- **Black on white** produces ~21:1 (the theoretical maximum).
+- **Symmetry** confirms that `contrastRatio(A, B)` equals `contrastRatio(B, A)`. Order does not matter because we always put the lighter luminance in the numerator.
+
+---
+
+## Run the Tests
+
+```bash title="Terminal"
+flutter test test/accessibility/contrast_test.dart
+```
+
+You should see output like this:
+
+```
++7 -2: Some tests failed.
+```
+
+Seven tests pass. Two tests fail:
+
+- **textSecondary** (#B0B0B0) on white: **2.17:1** -- far below the 4.5:1 threshold
+- **textDisabled** (#D5D5D5) on white: **1.47:1** -- barely distinguishable from the background
+
+These are real accessibility failures. A user with low vision, or anyone using their phone outside on a sunny day, would struggle to read text rendered in these colours.
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You have built a programmatic WCAG contrast checker from first principles and used it to catch two genuine contrast failures in the CheckBank theme. The <code>textSecondary</code> and <code>textDisabled</code> colours fail WCAG AA for normal text.</p>
+</div>
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `relativeLuminance(Color)` | Computes perceived brightness (0.0 = black, 1.0 = white) using the WCAG 2.1 weighted formula |
+| `contrastRatio(Color, Color)` | Returns the WCAG contrast ratio between two colours (1:1 to 21:1) |
+| `kWcagAANormal` (4.5) | Minimum ratio for normal-sized text under WCAG AA |
+| `kWcagAALarge` (3.0) | Minimum ratio for large text (>= 18pt or >= 14pt bold) under WCAG AA |
+| `kWcagAAA` (7.0) | Enhanced ratio for WCAG AAA compliance |
+| Inverse gamma / linearisation | Converts sRGB (perceptual) values to linear light for physically correct calculations |
+
+---
+
+## What's Next
+
+The tests have caught the contrast failures. In [Part 2: Fixing the Theme](/chapters/contrast/fixing), you will correct the colours, verify the fixes pass, and learn how to test contrast in rendered widget context.

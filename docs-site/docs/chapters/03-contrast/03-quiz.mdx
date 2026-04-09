@@ -1,0 +1,78 @@
+---
+sidebar_position: 3
+slug: /chapters/contrast/quiz
+title: "Quiz: Contrast on Trial"
+---
+
+import { Quiz, QuizQuestion } from '@site/src/components/Quiz';
+
+# Quiz: Contrast on Trial
+
+<Quiz chapterId="ch03">
+  <QuizQuestion
+    question="What is the minimum WCAG AA contrast ratio required for normal-sized text?"
+    options={[
+      "3.0 : 1",
+      "4.5 : 1",
+      "7.0 : 1",
+      "21.0 : 1"
+    ]}
+    correctIndex={1}
+    explanation="WCAG 2.1 Success Criterion 1.4.3 requires a minimum contrast ratio of 4.5:1 for normal text (smaller than 18pt or smaller than 14pt bold). The 3.0:1 threshold applies to large text only, while 7.0:1 is the enhanced AAA standard."
+  />
+  <QuizQuestion
+    question="What does the relativeLuminance function measure?"
+    options={[
+      "The brightness of a colour as displayed on an LCD screen",
+      "The perceived brightness of a colour according to human vision, weighted by sensitivity to red, green, and blue",
+      "The average of a colour's RGB channels",
+      "The opacity of a colour when rendered over a white background"
+    ]}
+    correctIndex={1}
+    explanation="Relative luminance measures how bright a colour appears to the human eye, using the WCAG 2.1 formula that weights green highest (0.7152), red next (0.2126), and blue lowest (0.0722). This reflects the fact that the human eye has far more green-sensitive cone cells than blue-sensitive ones."
+  />
+  <QuizQuestion
+    question="Why is the contrast ratio symmetric — that is, why does contrastRatio(A, B) equal contrastRatio(B, A)?"
+    options={[
+      "Because the formula uses addition, which is commutative",
+      "Because the formula always puts the lighter luminance in the numerator and the darker in the denominator, regardless of argument order",
+      "Because Flutter's Color class normalises both colours before comparison",
+      "It is not symmetric — the order of arguments matters"
+    ]}
+    correctIndex={1}
+    explanation="The contrastRatio function uses math.max and math.min to determine which colour is lighter and which is darker. The lighter luminance always goes in the numerator. This means swapping the arguments has no effect on the result — the ratio is always the same regardless of which colour you pass first."
+  />
+  <QuizQuestion
+    question="CheckBank's textSecondary colour is #B0B0B0 on a white background. What is its approximate contrast ratio?"
+    options={[
+      "1.47 : 1",
+      "2.17 : 1",
+      "4.50 : 1",
+      "7.00 : 1"
+    ]}
+    correctIndex={1}
+    explanation="The textSecondary colour (#B0B0B0) on white produces a contrast ratio of approximately 2.17:1 — well below the 4.5:1 WCAG AA threshold for normal text. This grey is too light to be reliably readable, especially in bright ambient light or for users with low vision."
+  />
+  <QuizQuestion
+    question="When does the WCAG AAA threshold (7.0:1) apply?"
+    options={[
+      "It is required for all text on every website and app",
+      "It applies only to decorative text and images of text",
+      "It is an enhanced standard for improved readability — particularly important for long-form content, and required by some government and healthcare regulations",
+      "It only applies to text on dark backgrounds"
+    ]}
+    correctIndex={2}
+    explanation="WCAG AAA (7.0:1) is an enhanced standard that improves readability for users with moderately low vision. It is not required for all text — WCAG itself acknowledges that meeting AAA across an entire interface is often not feasible. However, it is important for body copy and long-form content, and some sectors (government, healthcare) mandate it for specific content types."
+  />
+  <QuizQuestion
+    question="A banking app uses green text for credits and red text for debits, both with sufficient contrast against the background. Does this meet WCAG?"
+    options={[
+      "Yes — the contrast ratios are sufficient, so it passes",
+      "No — WCAG 1.4.1 (Use of Color) requires that colour is not the only visual means of conveying information. Users who cannot distinguish red from green need an additional indicator such as a + or - symbol, an icon, or a text label",
+      "Yes — colour-blind users can still see the text even if they cannot see the colour",
+      "No — red and green should never be used together in any context"
+    ]}
+    correctIndex={1}
+    explanation="WCAG Success Criterion 1.4.1 (Use of Color) states that colour must not be the sole means of conveying information. Even if both colours pass contrast checks, approximately 1 in 12 men have red-green colour vision deficiency and cannot reliably distinguish between them. The fix is to add a non-colour indicator: a plus/minus prefix, an arrow icon, or a text label like 'Credit' or 'Debit'."
+  />
+</Quiz>

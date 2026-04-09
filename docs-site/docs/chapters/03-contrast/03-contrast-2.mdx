@@ -1,0 +1,165 @@
+---
+sidebar_position: 2
+slug: /chapters/contrast/fixing
+title: "Part 2: Fixing the Theme"
+description: "Fix contrast failures and test in rendered context"
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Part 2: Fixing the Theme
+
+In Part 1, your contrast checker caught two colours that fail WCAG AA:
+
+- **`textSecondary`** (#B0B0B0) -- ratio 2.17:1 on white (needs 4.5:1)
+- **`textDisabled`** (#D5D5D5) -- ratio 1.47:1 on white (needs 4.5:1)
+
+Now you will fix them.
+
+---
+
+## The Fix
+
+The goal is to darken each colour enough to meet its required threshold while keeping the visual hierarchy intact. Secondary text should still look secondary (lighter than primary text), and disabled text should still look muted.
+
+<Tabs>
+  <TabItem value="before" label="🔴 Before (Failing)" default>
+
+```dart title="lib/theme/app_colors.dart (current — buggy)"
+// BUG: This grey is too light — fails WCAG AA (ratio ~2.17:1 on white)
+static const textSecondary = Color(0xFFB0B0B0);
+
+// BUG: Disabled state is barely visible (ratio ~1.47:1 on white)
+static const textDisabled = Color(0xFFD5D5D5);
+```
+
+  </TabItem>
+  <TabItem value="after" label="🟢 After (Fixed)">
+
+```dart title="lib/theme/app_colors.dart (fixed)"
+// highlight-next-line
+// FIX: Darkened to #757575 — ratio ~4.6:1 on white (passes AA normal text)
+static const textSecondary = Color(0xFF757575);
+
+// highlight-next-line
+// FIX: Darkened to #9E9E9E — ratio ~3.5:1 on white (passes AA large text)
+static const textDisabled = Color(0xFF9E9E9E);
+```
+
+  </TabItem>
+</Tabs>
+
+### Why These Specific Values?
+
+- **#757575** for `textSecondary` achieves approximately 4.6:1 on white, just clearing the 4.5:1 AA threshold for normal text. It is visibly lighter than `textPrimary` (#212121 at ~16.1:1), preserving the visual hierarchy.
+- **#9E9E9E** for `textDisabled` achieves approximately 3.5:1 on white. This passes the 3.0:1 AA large text threshold. Disabled text is typically used at larger sizes or in non-critical contexts, so the large text threshold is appropriate. If your app uses disabled text at small sizes, you would need to push it darker still.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Do Not Edit app_colors.dart Yet</div>
+  <p>In this tutorial, we leave the bugs in place so the test file continues to demonstrate real failures. The fixes above are shown for learning purposes. In a real project, you would apply the fix and re-run the tests to see them turn green.</p>
+</div>
+
+---
+
+## Testing in Rendered Context
+
+So far, you have tested colour constants directly. But in a real app, the colour that reaches the screen depends on the widget tree: themes, overrides, opacity, and background colours can all change the effective contrast.
+
+A more thorough approach extracts the computed style from a rendered widget and checks the contrast against its actual background.
+
+### The Concept
+
+```dart title="Pseudocode — rendered contrast check"
+// 1. Pump the screen
+await tester.pumpWidget(MaterialApp(home: SettingsScreen()));
+
+// 2. Find a specific Text widget
+final textFinder = find.text('Account preferences');
+final textWidget = tester.widget<Text>(textFinder);
+
+// 3. Extract the effective text colour
+final style = textWidget.style;
+final textColor = style?.color ?? Theme.of(context).textTheme.bodyMedium!.color!;
+
+// 4. Determine the background (scaffold surface colour)
+final bgColor = AppColors.surface;
+
+// 5. Compute and assert
+final ratio = contrastRatio(textColor, bgColor);
+expect(ratio, greaterThanOrEqualTo(kWcagAANormal));
+```
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Pump the widget tree</div>
+
+Render the actual screen under test. This builds the full widget tree with theme data applied, so every `Text` widget inherits its colour from the theme or from explicit overrides.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Find and extract the text colour</div>
+
+Use `tester.widget<Text>(finder)` to get the actual `Text` widget instance. Its `style?.color` gives you the colour that will be rendered. If the style is null, the text inherits from the theme -- you would need to resolve that from the `BuildContext`.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Compare against the background</div>
+
+For most screens, the background is the scaffold surface colour. In more complex layouts, you might need to walk up the widget tree to find the nearest coloured container. The principle is always the same: compare the foreground colour with whatever colour sits directly behind it.
+
+  </div>
+</div>
+
+This technique catches problems that static colour testing misses, such as a developer who overrides the theme colour with an inline style, or a background that changes between light and dark mode.
+
+---
+
+## WCAG AAA -- The Enhanced Threshold
+
+WCAG defines a second, stricter contrast level: **AAA (Enhanced)**, requiring **7.0:1** for normal text.
+
+Not every colour needs to meet AAA. The standard itself acknowledges that AAA is not achievable for all text across an entire interface. But it is worth testing your most critical text -- headings, body copy, error messages -- against the enhanced threshold.
+
+Let us check which CheckBank colours would pass AAA:
+
+| Colour | Hex | Ratio on White | AA Normal (4.5) | AAA (7.0) |
+|--------|-----|---------------|-----------------|-----------|
+| `textPrimary` | #212121 | ~16.10:1 | PASS | **PASS** |
+| `textSecondary` (fixed) | #757575 | ~4.6:1 | PASS | FAIL |
+| `textDisabled` (fixed) | #9E9E9E | ~3.5:1 | FAIL (large only) | FAIL |
+| `primary` | #00897B | ~4.32:1 | FAIL (large only) | FAIL |
+| `error` | #D32F2F | ~5.76:1 | PASS (large) | FAIL |
+
+Only `textPrimary` (#212121) passes AAA. The fixed `textSecondary` clears AA but falls short of 7:1. This is a common trade-off: secondary text that meets AAA would need to be so dark that it becomes indistinguishable from primary text, defeating the purpose of a visual hierarchy.
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">When Does AAA Matter?</div>
+  <p>Target AAA for long-form content (articles, documentation, legal text) and for users who have selected "high contrast" preferences. For UI labels, buttons, and secondary text, AA is the accepted standard. Some government and healthcare regulations require AAA for specific content types.</p>
+</div>
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| Rendered contrast testing | Extracts computed colours from actual widget trees rather than testing constants in isolation |
+| Visual hierarchy with contrast | Darkening colours to meet WCAG while preserving the distinction between primary, secondary, and disabled text |
+| WCAG AAA (7.0:1) | Enhanced contrast threshold for critical content -- not required everywhere, but important for body text and long-form reading |
+| Large text exception | Text >= 18pt (or >= 14pt bold) only needs 3.0:1, recognising that larger glyphs are inherently more legible |
+
+---
+
+## What's Next
+
+Test your understanding of contrast ratios, the WCAG formula, and when different thresholds apply in the [Chapter 3 Quiz](/chapters/contrast/quiz).
