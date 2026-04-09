@@ -1,0 +1,400 @@
+---
+sidebar_position: 2
+slug: /chapters/integration/audit-helper
+title: "Part 2: Reusable Audit Helper"
+description: "Build a function that walks the semantics tree and reports accessibility violations"
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Part 2: Reusable Audit Helper
+
+In Part 1, you wrote an integration test that navigates the full user journey. Now you will build a reusable function that walks the semantics tree at any point in that journey and reports accessibility violations.
+
+---
+
+## The Problem With Manual Checks
+
+In Chapters 1 through 6, every accessibility assertion was hand-written:
+
+```dart
+expect(semantics.getSemanticsData().hasFlag(SemanticsFlag.isHeader), isTrue);
+```
+
+This works when you know exactly what to check. But what about the bugs you have not thought of yet? A reusable audit function can scan the entire semantics tree and flag common issues automatically, catching problems you might not write explicit tests for.
+
+---
+
+## Building the Audit Function
+
+The `accessibilityAudit` function walks every node in the semantics tree and applies a set of rules. It returns a list of violation strings:
+
+```dart title="integration_test/accessibility_audit_test.dart"
+/// Walks the semantics tree and checks common accessibility rules.
+/// Returns a list of violations found.
+List<String> accessibilityAudit(WidgetTester tester) {
+  final violations = <String>[];
+
+  void walk(SemanticsNode node) {
+    final data = node.getSemanticsData();
+
+    // Rule 1: Tappable nodes must have a label or value
+    if (data.hasAction(SemanticsAction.tap) &&
+        data.label.isEmpty &&
+        data.value.isEmpty) {
+      violations
+          .add('Tappable node at ${node.rect} has no label or value');
+    }
+
+    // Rule 2: Toggleable nodes must have a label
+    if (data.hasAction(SemanticsAction.tap) &&
+        data.hasFlag(SemanticsFlag.hasToggledState) &&
+        data.label.isEmpty) {
+      violations.add('Toggle at ${node.rect} has no label');
+    }
+
+    // Rule 3: Images should have a label
+    if (data.hasFlag(SemanticsFlag.isImage) && data.label.isEmpty) {
+      violations
+          .add('Image at ${node.rect} has no semanticsLabel');
+    }
+
+    node.visitChildren(walk);
+  }
+
+  final owner = tester.binding.pipelineOwner.semanticsOwner;
+  if (owner == null) {
+    violations.add(
+      'Semantics owner is null — did you call ensureSemantics()?');
+    return violations;
+  }
+
+  final root = owner.rootSemanticsNode;
+  if (root == null) {
+    violations.add('Root semantics node is null');
+    return violations;
+  }
+
+  walk(root);
+  return violations;
+}
+```
+
+### How It Works
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Get the root semantics node</div>
+
+The semantics tree is managed by the `SemanticsOwner`, which you access through the test binding's pipeline. The root node is the top of the tree -- every other semantics node is a descendant.
+
+```dart
+final owner = tester.binding.pipelineOwner.semanticsOwner;
+final root = owner!.rootSemanticsNode!;
+```
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Walk the tree recursively</div>
+
+The `SemanticsNode.visitChildren()` method calls a callback for each child node. By calling `walk` recursively, we visit every node in the entire tree:
+
+```dart
+void walk(SemanticsNode node) {
+  final data = node.getSemanticsData();
+  // ... check rules ...
+  node.visitChildren(walk);
+}
+```
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Check rules at each node</div>
+
+At each node, we read `getSemanticsData()` and check three rules. **Rule 1:** If the node is tappable (`SemanticsAction.tap`) but has no `label` and no `value`, a screen reader user cannot know what it does. **Rule 2:** If the node is a toggle (like a switch or checkbox) but has no label, the user cannot know what they are toggling. **Rule 3:** If the node is an image but has no label, the user misses visual information.
+
+  </div>
+</div>
+
+---
+
+## Running the Audit at Each Screen
+
+Now integrate the audit function into the journey test from Part 1. After navigating to each screen, call `accessibilityAudit` and print the results:
+
+```dart title="integration_test/accessibility_audit_test.dart"
+// After navigating to the Dashboard:
+final dashboardViolations = accessibilityAudit(tester);
+debugPrint('Dashboard violations: ${dashboardViolations.length}');
+for (final v in dashboardViolations) {
+  debugPrint('  - $v');
+}
+
+// After navigating to Transactions:
+final txViolations = accessibilityAudit(tester);
+debugPrint('Transactions violations: ${txViolations.length}');
+for (final v in txViolations) {
+  debugPrint('  - $v');
+}
+
+// After navigating to Notifications:
+final notifViolations = accessibilityAudit(tester);
+debugPrint('Notifications violations: ${notifViolations.length}');
+for (final v in notifViolations) {
+  debugPrint('  - $v');
+}
+```
+
+At the end of the test, print a summary:
+
+```dart
+final totalViolations = loginViolations.length +
+    dashboardViolations.length +
+    txViolations.length +
+    notifViolations.length;
+
+debugPrint('\n=== Accessibility Audit Summary ===');
+debugPrint('Login:         ${loginViolations.length} violations');
+debugPrint('Dashboard:     ${dashboardViolations.length} violations');
+debugPrint('Transactions:  ${txViolations.length} violations');
+debugPrint('Notifications: ${notifViolations.length} violations');
+debugPrint('Total:         $totalViolations violations');
+debugPrint('===================================\n');
+```
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">The Audit Is a Teaching Tool</div>
+  <p>This audit function is deliberately simple. It catches the most common accessibility issues — unlabeled tappable elements, unlabeled toggles, and unlabeled images. Production-grade audit tools cover many more rules (minimum touch targets, contrast ratios, focus order). The goal here is to understand <em>how</em> automated auditing works by walking the semantics tree, not to build a comprehensive tool.</p>
+</div>
+
+---
+
+## What the Audit Catches
+
+Because CheckBank has intentional accessibility bugs, the audit will report violations on every screen. Here is what each rule catches:
+
+| Rule | What It Catches in CheckBank |
+|------|------------------------------|
+| Tappable without label | The "Forgot password?" `GestureDetector` on Login, filter chips on Transactions |
+| Toggle without label | Any toggle/switch that lacks a semantic label |
+| Image without label | The decorative bank icon on the Login screen (if not excluded from semantics) |
+
+These are the same bugs you found in individual chapters. The difference is that the audit finds them automatically, without you writing specific assertions for each one.
+
+---
+
+## Extending the Audit
+
+You can add more rules to the audit function as your understanding grows:
+
+```dart
+// Rule 4: Check for minimum touch target size
+if (data.hasAction(SemanticsAction.tap)) {
+  final rect = node.rect;
+  if (rect.width < 48 || rect.height < 48) {
+    violations.add(
+      'Tappable node at ${node.rect} is smaller than 48x48 dp');
+  }
+}
+
+// Rule 5: Check that headers exist (call separately per screen)
+bool hasHeader = false;
+void checkForHeader(SemanticsNode node) {
+  if (node.getSemanticsData().hasFlag(SemanticsFlag.isHeader)) {
+    hasHeader = true;
+  }
+  node.visitChildren(checkForHeader);
+}
+```
+
+Each rule you add makes the audit more comprehensive. Over time, the audit becomes a living checklist that runs automatically on every screen in your app.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Audit vs. Widget Tests</div>
+  <p>The audit function is a broad scan — it catches common patterns but does not understand <em>context</em>. It cannot know that a specific heading should say "Quick Pay" or that a particular live region should announce a payment confirmation. Context-specific assertions still belong in dedicated widget tests. Use the audit for general hygiene and widget tests for specific requirements.</p>
+</div>
+
+---
+
+## The Complete Test File
+
+<Tabs>
+  <TabItem value="complete" label="Full Integration Test" default>
+
+```dart title="integration_test/accessibility_audit_test.dart"
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:checkbank/app.dart';
+
+/// Walks the semantics tree and checks common accessibility rules.
+/// Returns a list of violations found.
+List<String> accessibilityAudit(WidgetTester tester) {
+  final violations = <String>[];
+
+  void walk(SemanticsNode node) {
+    final data = node.getSemanticsData();
+
+    // Rule 1: Tappable nodes must have a label or value
+    if (data.hasAction(SemanticsAction.tap) &&
+        data.label.isEmpty &&
+        data.value.isEmpty) {
+      violations
+          .add('Tappable node at ${node.rect} has no label or value');
+    }
+
+    // Rule 2: Toggleable nodes must have a label
+    if (data.hasAction(SemanticsAction.tap) &&
+        data.hasFlag(SemanticsFlag.hasToggledState) &&
+        data.label.isEmpty) {
+      violations.add('Toggle at ${node.rect} has no label');
+    }
+
+    // Rule 3: Images should have a label
+    if (data.hasFlag(SemanticsFlag.isImage) && data.label.isEmpty) {
+      violations
+          .add('Image at ${node.rect} has no semanticsLabel');
+    }
+
+    node.visitChildren(walk);
+  }
+
+  final owner = tester.binding.pipelineOwner.semanticsOwner;
+  if (owner == null) {
+    violations.add(
+      'Semantics owner is null — did you call ensureSemantics()?');
+    return violations;
+  }
+
+  final root = owner.rootSemanticsNode;
+  if (root == null) {
+    violations.add('Root semantics node is null');
+    return violations;
+  }
+
+  walk(root);
+  return violations;
+}
+
+void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('full user journey with accessibility audit at each screen',
+      (tester) async {
+    final handle = tester.ensureSemantics();
+
+    await tester.pumpWidget(const ProviderScope(child: CheckBankApp()));
+    await tester.pumpAndSettle();
+
+    // Step 1: Login screen
+    expect(find.text('CheckBank'), findsOneWidget);
+    final loginViolations = accessibilityAudit(tester);
+    debugPrint('Login screen violations: ${loginViolations.length}');
+    for (final v in loginViolations) {
+      debugPrint('  - $v');
+    }
+
+    // Step 2: Sign in
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.hintText == 'Email address',
+      ),
+      'alex@checkbank.dev',
+    );
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.hintText == 'Password',
+      ),
+      'password',
+    );
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Go'));
+    await tester.pumpAndSettle();
+
+    // Step 3: Dashboard
+    expect(find.textContaining('Alex Johnson'), findsOneWidget);
+    final dashboardViolations = accessibilityAudit(tester);
+    debugPrint('Dashboard violations: ${dashboardViolations.length}');
+    for (final v in dashboardViolations) {
+      debugPrint('  - $v');
+    }
+
+    // Step 4: Transactions
+    await tester.tap(find.text('Current Account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Transactions'), findsOneWidget);
+    final txViolations = accessibilityAudit(tester);
+    debugPrint('Transactions violations: ${txViolations.length}');
+    for (final v in txViolations) {
+      debugPrint('  - $v');
+    }
+
+    // Step 5: Back to Dashboard
+    final backButton = find.byTooltip('Back');
+    if (backButton.evaluate().isNotEmpty) {
+      await tester.tap(backButton);
+      await tester.pumpAndSettle();
+    }
+
+    // Step 6: Notifications
+    await tester.tap(find.text('Alerts'));
+    await tester.pumpAndSettle();
+    expect(find.text('Notifications'), findsOneWidget);
+    final notifViolations = accessibilityAudit(tester);
+    debugPrint('Notifications violations: ${notifViolations.length}');
+    for (final v in notifViolations) {
+      debugPrint('  - $v');
+    }
+
+    // Summary
+    final totalViolations = loginViolations.length +
+        dashboardViolations.length +
+        txViolations.length +
+        notifViolations.length;
+
+    debugPrint('\n=== Accessibility Audit Summary ===');
+    debugPrint('Login:         ${loginViolations.length} violations');
+    debugPrint('Dashboard:     ${dashboardViolations.length} violations');
+    debugPrint('Transactions:  ${txViolations.length} violations');
+    debugPrint('Notifications: ${notifViolations.length} violations');
+    debugPrint('Total:         $totalViolations violations');
+    debugPrint('===================================\n');
+
+    handle.dispose();
+  });
+}
+```
+
+  </TabItem>
+</Tabs>
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `SemanticsNode` | A node in the accessibility tree — has actions, flags, labels, and children |
+| `getSemanticsData()` | Returns the `SemanticsData` for a node — contains all semantic properties |
+| `hasAction(SemanticsAction.tap)` | Checks whether the node responds to tap gestures |
+| `hasFlag(SemanticsFlag.isImage)` | Checks whether the node represents an image |
+| `visitChildren(callback)` | Recursively visits all child nodes in the semantics tree |
+| `pipelineOwner.semanticsOwner` | The owner of the semantics tree — provides access to the root node |
+
+---
+
+## What's Next
+
+Test your understanding of integration tests and the audit helper in the [Chapter 7 Quiz](/chapters/integration/quiz).

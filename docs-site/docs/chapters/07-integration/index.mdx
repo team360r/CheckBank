@@ -5,12 +5,228 @@ title: "Chapter 7: Integration Tests — The Full Journey"
 description: "Write cross-screen accessibility tests and a reusable audit helper"
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Chapter 7: Integration Tests — The Full Journey
 
-> *Coming soon*
+> *"A screen reader user doesn't test one screen at a time. They navigate from login to dashboard to transactions. Your tests should do the same."*
 
 **Estimated time:** ~30 minutes | **Focus:** Cross-screen tests | **Branch:** `chapter-7-integration`
 
 ---
 
-Content for this chapter is being written. Check back soon!
+## Why Integration Tests?
+
+In Chapters 1 through 6, every test focused on a single screen. You pumped `LoginScreen` or `NotificationsScreen` in isolation and checked its accessibility properties. This is effective for catching bugs within a screen, but it misses an entire category of problems.
+
+Real users navigate a journey:
+
+1. They land on the Login screen and sign in
+2. They arrive at the Dashboard and hear the greeting
+3. They tap an account card and land on Transactions
+4. They navigate via the bottom bar to Notifications
+
+Accessibility issues can appear between screens -- focus might not move to the new screen, a heading might not exist on the landing page, or a navigation element might lose its label during a route transition. Integration tests catch these cross-screen issues that widget tests cannot see.
+
+### Widget Tests vs. Integration Tests
+
+| Aspect | Widget Test | Integration Test |
+|--------|------------|-----------------|
+| Scope | One widget or screen | Full app, multiple screens |
+| Navigation | Not tested (screens pumped in isolation) | Full GoRouter navigation |
+| Speed | Fast (~ms) | Slower (~seconds) |
+| Runs on | Test runner only | Requires a device or emulator |
+| Best for | Component-level accessibility | Journey-level accessibility |
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Integration Tests Need a Device</div>
+  <p>Unlike widget tests that run with <code>flutter test</code>, integration tests require a running device or emulator. Use <code>flutter test integration_test/</code> with a connected device. The tests in this chapter are designed to compile and run, but you will need an emulator or physical device to execute them.</p>
+</div>
+
+---
+
+## Setting Up the Integration Test
+
+Flutter integration tests live in a top-level `integration_test/` directory (not inside `test/`). The `integration_test` package is already in the project's `pubspec.yaml` under `dev_dependencies`.
+
+Create the file `integration_test/accessibility_audit_test.dart`:
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Initialize the integration binding</div>
+
+Every integration test must start by initializing the integration test binding. This replaces the normal test binding with one that can control a real device:
+
+```dart title="integration_test/accessibility_audit_test.dart"
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:checkbank/app.dart';
+
+void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('full user journey with accessibility checks', (tester) async {
+    final handle = tester.ensureSemantics();
+
+    await tester.pumpWidget(const ProviderScope(child: CheckBankApp()));
+    await tester.pumpAndSettle();
+
+    // Tests go here...
+
+    handle.dispose();
+  });
+}
+```
+
+Notice three things. First, **`IntegrationTestWidgetsFlutterBinding.ensureInitialized()`** replaces the default binding. This is required before any `testWidgets` call in an integration test. Second, **`ProviderScope(child: CheckBankApp())`** pumps the full app, not a single screen. The `CheckBankApp` includes `GoRouter`, the bottom navigation shell, and all routing logic. Third, **`tester.ensureSemantics()`** enables the semantics tree just like in widget tests, so we can audit accessibility properties.
+
+  </div>
+</div>
+
+---
+
+## The Full User Journey
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Step 1: Verify the Login screen renders</div>
+
+The app starts on the Login screen because the user is not authenticated. We verify the basic structure is present:
+
+```dart
+// Step 1: Login screen
+expect(find.text('CheckBank'), findsOneWidget);
+expect(find.text('Go'), findsOneWidget);
+```
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Step 2: Sign in with valid credentials</div>
+
+We enter the email and password, then tap the "Go" button. The router detects the authenticated state and redirects to the Dashboard:
+
+```dart
+// Step 2: Sign in
+await tester.enterText(
+  find.byWidgetPredicate(
+    (w) => w is TextField && w.decoration?.hintText == 'Email address',
+  ),
+  'alex@checkbank.dev',
+);
+await tester.enterText(
+  find.byWidgetPredicate(
+    (w) => w is TextField && w.decoration?.hintText == 'Password',
+  ),
+  'password',
+);
+await tester.tap(find.widgetWithText(ElevatedButton, 'Go'));
+await tester.pumpAndSettle();
+```
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">4</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Step 3: Verify the Dashboard</div>
+
+After signing in, we should land on the Dashboard with the user's name and account list:
+
+```dart
+// Step 3: Dashboard
+expect(find.textContaining('Alex Johnson'), findsOneWidget);
+expect(find.text('Current Account'), findsOneWidget);
+```
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">5</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Step 4: Navigate to Transactions</div>
+
+Tap an account card to navigate to the Transactions screen:
+
+```dart
+// Step 4: Tap account card -> Transactions
+await tester.tap(find.text('Current Account'));
+await tester.pumpAndSettle();
+
+expect(find.text('Transactions'), findsOneWidget);
+```
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">6</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Step 5: Navigate to Notifications</div>
+
+Go back and use the bottom navigation bar to reach the Notifications screen:
+
+```dart
+// Step 5: Navigate back, then to Notifications
+final backButton = find.byTooltip('Back');
+if (backButton.evaluate().isNotEmpty) {
+  await tester.tap(backButton);
+  await tester.pumpAndSettle();
+}
+
+await tester.tap(find.text('Alerts'));
+await tester.pumpAndSettle();
+
+expect(find.text('Notifications'), findsOneWidget);
+```
+
+  </div>
+</div>
+
+---
+
+## What This Journey Reveals
+
+This single test exercises the entire main navigation path of the app. At each screen, you can add accessibility assertions:
+
+- Does the screen have a heading?
+- Do tappable elements have labels?
+- Are live regions present where expected?
+- Does focus move to the new screen after navigation?
+
+The test itself is not about finding new bugs (the widget tests already do that). It is about verifying that the journey holds together -- that navigation transitions work, that screens render correctly when reached through the router, and that accessibility properties survive route changes.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Integration Test Pragmatics</div>
+  <p>Integration tests run against a real rendering engine on a device, so they are slower and more fragile than widget tests. Use them for journey-level verification, not for exhaustive property checking. The widget tests in Chapters 1-6 are your primary accessibility test suite. Integration tests are the safety net that catches cross-screen regressions.</p>
+</div>
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `IntegrationTestWidgetsFlutterBinding` | Replaces the default test binding to support running on a real device or emulator |
+| `ProviderScope(child: CheckBankApp())` | Pumps the full app with all routing and state management intact |
+| `tester.pumpAndSettle()` | Waits for all animations and async work to complete before assertions |
+| `find.byTooltip('Back')` | Finds the AppBar back button by its tooltip text |
+| Bottom nav `find.text('Alerts')` | Navigates between screens using the bottom navigation bar labels |
+
+---
+
+## What's Next
+
+In [Part 2: Reusable Audit Helper](/chapters/integration/audit-helper), you will build a function that walks the semantics tree and checks common accessibility rules at every screen in the journey.

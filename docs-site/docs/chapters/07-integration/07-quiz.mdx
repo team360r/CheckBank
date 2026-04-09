@@ -1,0 +1,78 @@
+---
+sidebar_position: 3
+slug: /chapters/integration/quiz
+title: "Quiz: Integration Tests"
+---
+
+import { Quiz, QuizQuestion } from '@site/src/components/Quiz';
+
+# Quiz: Integration Tests
+
+<Quiz chapterId="ch07">
+  <QuizQuestion
+    question="What must you call before any testWidgets in an integration test?"
+    options={[
+      "WidgetsFlutterBinding.ensureInitialized()",
+      "IntegrationTestWidgetsFlutterBinding.ensureInitialized()",
+      "TestWidgetsFlutterBinding.ensureInitialized()",
+      "FlutterBinding.initialize()"
+    ]}
+    correctIndex={1}
+    explanation="Integration tests require IntegrationTestWidgetsFlutterBinding.ensureInitialized() to replace the default test binding with one that can control a real device or emulator. Without this, the test cannot interact with the platform channels and rendering engine that a real app uses."
+  />
+  <QuizQuestion
+    question="What is the main advantage of integration tests over widget tests for accessibility?"
+    options={[
+      "They run faster and catch more bugs per second",
+      "They test the full navigation journey — route transitions, screen rendering after navigation, and cross-screen accessibility",
+      "They can test contrast ratios more accurately",
+      "They do not require ensureSemantics()"
+    ]}
+    correctIndex={1}
+    explanation="Widget tests pump a single screen in isolation. Integration tests pump the full app and navigate through routes, verifying that accessibility properties survive navigation transitions and that the journey as a whole is accessible. They catch cross-screen issues that widget tests cannot see."
+  />
+  <QuizQuestion
+    question="How do you access the root of the semantics tree in a test?"
+    options={[
+      "tester.semanticsTree.root",
+      "tester.binding.pipelineOwner.semanticsOwner!.rootSemanticsNode!",
+      "SemanticsBinding.instance.rootNode",
+      "tester.getSemantics(find.byType(MaterialApp))"
+    ]}
+    correctIndex={1}
+    explanation="The semantics tree is managed by the SemanticsOwner, accessed through tester.binding.pipelineOwner.semanticsOwner. The rootSemanticsNode property gives you the top of the tree, and you can use visitChildren to walk the entire tree recursively."
+  />
+  <QuizQuestion
+    question="Which method on SemanticsNode lets you recursively visit all child nodes?"
+    options={[
+      "node.children.forEach(callback)",
+      "node.visitChildren(callback)",
+      "node.walkTree(callback)",
+      "node.forEachChild(callback)"
+    ]}
+    correctIndex={1}
+    explanation="SemanticsNode.visitChildren(callback) calls the provided callback for each direct child node. By calling the walk function recursively inside the callback, you can visit every node in the entire semantics tree."
+  />
+  <QuizQuestion
+    question="When should you use widget tests vs. integration tests for accessibility?"
+    options={[
+      "Always use integration tests — they are more comprehensive",
+      "Always use widget tests — they are faster",
+      "Use widget tests for component-level accessibility checks and integration tests for journey-level verification across screens",
+      "Use integration tests for development and widget tests for CI"
+    ]}
+    correctIndex={2}
+    explanation="Widget tests are fast and precise — use them for checking specific accessibility properties on individual screens (labels, roles, flags, contrast). Integration tests are slower but verify the full journey — use them for cross-screen navigation, route transitions, and overall audit sweeps. Both are needed for a complete accessibility test suite."
+  />
+  <QuizQuestion
+    question="A reusable audit function finds a tappable node with an empty label and empty value. Why is this a violation?"
+    options={[
+      "Tappable nodes must always have a tooltip",
+      "Screen reader users cannot know what the element does — they hear nothing when they focus on it",
+      "Empty labels cause the app to crash on accessibility-enabled devices",
+      "Flutter requires all widgets to have non-empty labels"
+    ]}
+    correctIndex={1}
+    explanation="When a screen reader user navigates to a tappable element that has no label and no value, the screen reader announces nothing (or just 'button'). The user has no idea what tapping the element will do. This is why the audit flags tappable nodes without labels — they are invisible to screen reader users."
+  />
+</Quiz>
