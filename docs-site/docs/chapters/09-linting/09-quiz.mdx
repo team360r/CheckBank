@@ -1,0 +1,67 @@
+---
+sidebar_position: 2
+slug: /chapters/linting/quiz
+title: "Quiz: Linting and Static Analysis"
+---
+
+import { Quiz, QuizQuestion } from '@site/src/components/Quiz';
+
+# Quiz: Linting and Static Analysis
+
+<Quiz chapterId="ch09">
+  <QuizQuestion
+    question="When does static analysis (linting) run in the development workflow?"
+    options={[
+      "Only during CI on pull requests",
+      "Only when you run flutter test",
+      "In your IDE as you type, before compilation — the earliest line of defence",
+      "Only after the app is deployed to production"
+    ]}
+    correctIndex={2}
+    explanation="Static analysis runs in your IDE in real time as you type code. It flags potential issues before you even save the file. This makes it the earliest line of defence — catching code patterns that might indicate accessibility bugs before compilation, testing, or deployment."
+  />
+  <QuizQuestion
+    question="Which file configures the Dart analyzer's lint rules in a Flutter project?"
+    options={[
+      "pubspec.yaml",
+      "analysis_options.yaml",
+      "dart_analysis.json",
+      "lint_config.yaml"
+    ]}
+    correctIndex={1}
+    explanation="The analysis_options.yaml file at the project root configures the Dart analyzer. It specifies which lint rule sets to include (like flutter_lints) and allows enabling or disabling individual rules. The analyzer reads this file to determine which checks to apply."
+  />
+  <QuizQuestion
+    question="Why is using GestureDetector without a Semantics wrapper an accessibility concern?"
+    options={[
+      "GestureDetector is deprecated and should not be used",
+      "GestureDetector makes the widget tappable but adds no semantics — screen readers do not know it is interactive",
+      "GestureDetector blocks screen reader gestures",
+      "GestureDetector automatically adds wrong semantics"
+    ]}
+    correctIndex={1}
+    explanation="GestureDetector adds tap detection but does not add any semantics metadata. The element becomes visually and functionally tappable, but screen readers do not know it is a button, link, or interactive element. Material widgets like ElevatedButton and TextButton add button semantics automatically. If you must use GestureDetector, wrap it in a Semantics widget with the appropriate role."
+  />
+  <QuizQuestion
+    question="What is the difference between static analysis and widget tests for accessibility?"
+    options={[
+      "Static analysis is always more comprehensive than widget tests",
+      "Static analysis checks code patterns at compile time; widget tests verify the runtime semantics tree — they catch different categories of issues",
+      "Widget tests can replace static analysis entirely",
+      "Static analysis checks the semantics tree; widget tests check code patterns"
+    ]}
+    correctIndex={1}
+    explanation="Static analysis examines source code patterns (like Image without semanticsLabel) before the code runs. Widget tests examine the runtime semantics tree (checking flags like isHeader, isLiveRegion, isButton). Static analysis cannot know what the semantics tree looks like at runtime, and widget tests cannot flag code patterns at the source level. Both are needed."
+  />
+  <QuizQuestion
+    question="A TextField uses hintText: 'Email address' but has no labelText. What accessibility problem does this create?"
+    options={[
+      "The field will not accept keyboard input",
+      "The hint text disappears when the user starts typing, so screen reader users lose context about what the field is for mid-entry",
+      "The field will have incorrect contrast",
+      "The field will not be focusable by screen readers"
+    ]}
+    correctIndex={1}
+    explanation="hintText is placeholder text that disappears when the user starts typing. If it is the only label, screen reader users who have already started typing cannot determine what the field is for — the hint is gone. labelText persists as a floating label above the field and remains in the semantics tree, providing context throughout the interaction."
+  />
+</Quiz>

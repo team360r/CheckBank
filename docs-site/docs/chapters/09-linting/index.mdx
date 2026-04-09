@@ -2,15 +2,283 @@
 sidebar_position: 1
 slug: /chapters/linting
 title: "Chapter 9: Linting and Static Analysis"
-description: "Configure lint rules and custom_lint for accessibility"
+description: "Catch accessibility issues before tests even run"
 ---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Chapter 9: Linting and Static Analysis
 
-> *Coming soon*
+> *"The fastest test is the one that never needs to run -- because the linter already caught the bug."*
 
-**Estimated time:** ~20 minutes | **Focus:** Lint rules | **Branch:** `chapter-9-linting`
+**Estimated time:** ~20 minutes | **Focus:** Analysis config | **Branch:** `chapter-9-linting`
 
 ---
 
-Content for this chapter is being written. Check back soon!
+## Where Linting Fits
+
+You now have three layers of accessibility testing:
+
+| Layer | When It Runs | What It Catches |
+|-------|-------------|-----------------|
+| **Static analysis (linting)** | Before compilation, in your IDE | Code patterns that often indicate accessibility issues |
+| **Widget tests** (Chapters 1-6) | `flutter test` | Semantics bugs on individual screens |
+| **Integration tests** (Chapter 7) | On a device/emulator | Cross-screen journey issues |
+
+Static analysis is the earliest line of defence. It runs in your IDE as you type, flagging potential issues before you even save the file. It cannot replace runtime tests (it does not know what the semantics tree looks like at runtime), but it catches patterns that frequently lead to accessibility bugs.
+
+---
+
+## `analysis_options.yaml`
+
+Flutter projects include an `analysis_options.yaml` file at the project root. This file configures the Dart analyzer -- the tool that checks your code for errors, warnings, and style issues.
+
+CheckBank's current configuration:
+
+```yaml title="analysis_options.yaml"
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Rules can be enabled or disabled here
+```
+
+The `flutter_lints` package includes a curated set of lint rules recommended for Flutter projects. Several of these rules help catch accessibility-adjacent issues.
+
+---
+
+## Lint Rules That Help Accessibility
+
+While there are no Dart lint rules specifically labelled "accessibility", several standard rules catch patterns that frequently cause accessibility bugs.
+
+### `avoid_unnecessary_containers`
+
+```dart
+// Bad: Container adds nothing
+Container(
+  child: Text('Hello'),
+)
+
+// Good: Just use the Text
+Text('Hello')
+```
+
+Unnecessary containers can interfere with the semantics tree. They add nodes that serve no purpose and may confuse the tree structure that assistive technologies consume.
+
+### `use_decorated_box`
+
+```dart
+// Bad: Container used only for decoration
+Container(
+  decoration: BoxDecoration(color: Colors.red),
+  child: Text('Alert'),
+)
+
+// Good: DecoratedBox is more semantically clear
+DecoratedBox(
+  decoration: BoxDecoration(color: Colors.red),
+  child: Text('Alert'),
+)
+```
+
+### `sort_child_properties_last`
+
+```dart
+// Bad: child buried in the middle
+ElevatedButton(
+  child: Text('Submit'),  // child before onPressed
+  onPressed: () {},
+)
+
+// Good: child at the end
+ElevatedButton(
+  onPressed: () {},
+  child: Text('Submit'),
+)
+```
+
+While not directly an accessibility rule, consistent code structure makes it easier to spot when accessibility properties like `semanticsLabel` or `Semantics` wrappers are missing.
+
+---
+
+## Patterns to Watch For
+
+The Dart analyzer cannot check the semantics tree at compile time, but there are code patterns that almost always indicate an accessibility problem. Train yourself to spot these:
+
+### Pattern 1: `Image` Without `semanticsLabel`
+
+```dart
+// Problematic: Screen readers cannot describe this image
+Image.asset('assets/logo.png')
+
+// Better: Provides context for screen readers
+Image.asset(
+  'assets/logo.png',
+  semanticsLabel: 'CheckBank logo',
+)
+
+// Also valid: Decorative image excluded from semantics
+Image.asset(
+  'assets/logo.png',
+  excludeFromSemantics: true,
+)
+```
+
+Every `Image` should either have a `semanticsLabel` (if it conveys information) or `excludeFromSemantics: true` (if it is decorative). An image with neither is a gap in the accessibility story.
+
+### Pattern 2: `GestureDetector` Without `Semantics`
+
+```dart
+// Problematic: Tappable but invisible to screen readers
+GestureDetector(
+  onTap: () => doSomething(),
+  child: Text('Forgot password?'),
+)
+
+// Better: Wrapped in Semantics with a role
+Semantics(
+  button: true,
+  label: 'Forgot password',
+  child: GestureDetector(
+    onTap: () => doSomething(),
+    child: Text('Forgot password?'),
+  ),
+)
+
+// Best: Use a Material button
+TextButton(
+  onPressed: () => doSomething(),
+  child: Text('Forgot password?'),
+)
+```
+
+`GestureDetector` does not add any semantics. It makes a widget tappable, but screen readers do not know it is a button, a link, or anything interactive. Material widgets like `ElevatedButton`, `TextButton`, and `IconButton` add button semantics automatically.
+
+### Pattern 3: `TextField` With `hintText` But No `labelText`
+
+```dart
+// Problematic: Hint disappears when user starts typing
+TextField(
+  decoration: InputDecoration(
+    hintText: 'Email address',
+  ),
+)
+
+// Better: Label persists and is always announced
+TextField(
+  decoration: InputDecoration(
+    labelText: 'Email address',
+    hintText: 'e.g., alex@checkbank.dev',
+  ),
+)
+```
+
+`hintText` disappears when the user types. If it is the only identifier, screen reader users lose context about what the field is for mid-entry. `labelText` persists above the field and remains in the semantics tree.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">These Are Patterns, Not Lint Rules</div>
+  <p>The Dart analyzer does not currently ship built-in rules for the three patterns above. They are code review guidelines. In a team setting, document these patterns in your contributing guide and review for them in pull requests.</p>
+</div>
+
+---
+
+## Custom Lint Rules With `custom_lint`
+
+For teams that want to enforce accessibility patterns automatically, the `custom_lint` package lets you write your own analyzer rules in Dart.
+
+A custom rule could check:
+
+- Every `Image` constructor call has either `semanticsLabel` or `excludeFromSemantics`
+- Every `GestureDetector` is wrapped in a `Semantics` widget (or flagged for review)
+- Every `TextField` has `labelText` set in its `InputDecoration`
+
+Here is a conceptual example of what a custom rule looks like:
+
+```dart title="Conceptual -- custom_lint rule"
+class ImageSemanticLabelRule extends DartLintRule {
+  @override
+  void run(CustomLintResolver resolver, ErrorReporter reporter,
+      CustomLintContext context) {
+    context.registry.addInstanceCreationExpression((node) {
+      // Check if this is an Image constructor
+      // Verify semanticsLabel or excludeFromSemantics is set
+      // Report a warning if neither is present
+    });
+  }
+}
+```
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">custom_lint Is Advanced</div>
+  <p>Writing custom lint rules requires understanding the Dart AST (Abstract Syntax Tree) and the <code>custom_lint</code> package API. This is beyond the scope of this tutorial, but knowing the capability exists is valuable. For teams that want automated enforcement, <code>custom_lint</code> is the path.</p>
+</div>
+
+---
+
+## Running `dart analyze`
+
+The `dart analyze` command runs all configured lint rules against your project:
+
+```bash title="Terminal"
+dart analyze
+```
+
+This produces output like:
+
+```
+Analyzing checkbank...
+
+   info - lib/screens/login_screen.dart:78:17 -
+          Use 'DecoratedBox' instead of 'Container'. -
+          use_decorated_box
+
+1 issue found.
+```
+
+In the CI pipeline (Chapter 10), `dart analyze` runs on every pull request. If it reports issues, the pipeline fails -- catching problems before code is merged.
+
+### `dart analyze` vs. `flutter analyze`
+
+Both commands do the same thing. `flutter analyze` is a wrapper around `dart analyze` that ensures the Flutter SDK's analysis server is used. For Flutter projects, either works. We will use `dart analyze` in the CI pipeline because it is slightly more direct.
+
+---
+
+## Building an Analysis Checklist
+
+Here is a practical checklist to apply during code review alongside the automated analysis:
+
+| Check | What to Look For |
+|-------|-----------------|
+| Images | Does every `Image` have `semanticsLabel` or `excludeFromSemantics`? |
+| Touch targets | Are `GestureDetector` and `InkWell` wrapped in `Semantics` or replaced with Material buttons? |
+| Text fields | Does every `TextField` have `labelText`, not just `hintText`? |
+| Headings | Are section titles wrapped in `Semantics(header: true)`? |
+| Live regions | Do dynamic status messages have `Semantics(liveRegion: true)`? |
+| Contrast | Do text colours meet WCAG AA contrast ratios against their background? |
+| Toggle state | Do switches and checkboxes expose their state in semantics? |
+
+This checklist covers the same issues tested in Chapters 1-6, but from a code review perspective rather than a test perspective.
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You now have three layers of accessibility defence: static analysis catches code patterns as you type, widget tests verify runtime semantics on individual screens, and integration tests validate the full user journey. Each layer catches different categories of issues, and together they form a comprehensive safety net.</p>
+</div>
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `analysis_options.yaml` | Configures the Dart analyzer with lint rules for the project |
+| `dart analyze` | Runs all configured lint rules and reports issues |
+| `flutter_lints` | A curated set of recommended lint rules for Flutter projects |
+| `custom_lint` | A package that lets you write custom Dart analyzer rules |
+| Code review patterns | Manual checks for `Image` without label, `GestureDetector` without `Semantics`, `TextField` without `labelText` |
+
+---
+
+## What's Next
+
+Test your understanding of linting and static analysis in the [Chapter 9 Quiz](/chapters/linting/quiz).
