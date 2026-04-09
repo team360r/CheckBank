@@ -1,0 +1,78 @@
+---
+sidebar_position: 3
+slug: /chapters/focus/quiz
+title: "Quiz: Focus Traversal"
+---
+
+import { Quiz, QuizQuestion } from '@site/src/components/Quiz';
+
+# Quiz: Focus Traversal
+
+<Quiz chapterId="ch05">
+  <QuizQuestion
+    question="How do you simulate pressing the Tab key in a Flutter widget test?"
+    options={[
+      "tester.pressTab()",
+      "tester.sendKeyEvent(LogicalKeyboardKey.tab)",
+      "FocusManager.instance.nextFocus()",
+      "tester.tap(find.byType(FocusTraversalGroup))"
+    ]}
+    correctIndex={1}
+    explanation="tester.sendKeyEvent(LogicalKeyboardKey.tab) simulates pressing the Tab key. This triggers Flutter's focus traversal system, which moves focus to the next focusable element in the traversal order. You need to import LogicalKeyboardKey from package:flutter/services.dart."
+  />
+  <QuizQuestion
+    question="What WCAG criterion requires that focusable components receive focus in a meaningful order?"
+    options={[
+      "WCAG 1.4.3 — Contrast (Minimum)",
+      "WCAG 2.4.3 — Focus Order",
+      "WCAG 2.5.8 — Target Size",
+      "WCAG 4.1.3 — Status Messages"
+    ]}
+    correctIndex={1}
+    explanation="WCAG 2.4.3 (Focus Order) requires that when content can be navigated sequentially, focusable components receive focus in an order that preserves meaning and operability. This applies to keyboard navigation, switch access, and screen reader traversal."
+  />
+  <QuizQuestion
+    question="What does FocusTraversalOrder with NumericFocusOrder do?"
+    options={[
+      "It sets the z-index of the widget in the render tree",
+      "It assigns an explicit position in the tab traversal sequence — lower numbers receive focus first",
+      "It limits the number of times a widget can receive focus",
+      "It sets the order in which widgets are painted on screen"
+    ]}
+    correctIndex={1}
+    explanation="FocusTraversalOrder wraps a widget to assign it an explicit position in the traversal sequence. NumericFocusOrder(n) uses a number to determine the order — lower values are visited first. This is useful when the default reading-order traversal does not match the intended navigation flow, such as in multi-column layouts."
+  />
+  <QuizQuestion
+    question="Why must you use addPostFrameCallback when requesting focus after a setState call?"
+    options={[
+      "Because setState is asynchronous and the callback waits for it to complete",
+      "Because the new widget does not exist in the tree until the frame builds — requesting focus before that would target a widget that has not been created yet",
+      "Because FocusNode.requestFocus() can only be called from a callback",
+      "Because addPostFrameCallback prevents the focus request from being cancelled"
+    ]}
+    correctIndex={1}
+    explanation="When you call setState to show new content (like advancing a Stepper step), the new widget is not built until Flutter processes the next frame. If you call requestFocus() immediately after setState, the target widget may not exist yet. addPostFrameCallback schedules your code to run after the frame builds, ensuring the target is in the tree."
+  />
+  <QuizQuestion
+    question="A Transfer screen advances from step 1 to step 2 but does not move focus. What problem does this cause?"
+    options={[
+      "The app will crash because the old step's widgets are removed",
+      "Sighted users will not see the new step's content",
+      "Keyboard and screen reader users are stranded — they do not know new content appeared and must manually search for the new fields",
+      "The Stepper widget will not advance to step 2"
+    ]}
+    correctIndex={2}
+    explanation="When focus does not move on step advance, keyboard users are left on the old Continue button (or wherever focus was). Screen reader users hear nothing about the new step. They must manually Tab through the interface to discover that new fields have appeared. This is disorienting and violates WCAG 2.4.3 (Focus Order)."
+  />
+  <QuizQuestion
+    question="What does FocusScope.requestFocus() do differently from FocusNode.requestFocus()?"
+    options={[
+      "FocusScope.requestFocus() moves focus within the current scope, while FocusNode.requestFocus() can move focus to any node in the tree",
+      "They are identical — both move focus to the specified node",
+      "FocusScope.requestFocus() only works in dialogs",
+      "FocusNode.requestFocus() is deprecated in favour of FocusScope.requestFocus()"
+    ]}
+    correctIndex={0}
+    explanation="FocusScope.requestFocus() operates within the current focus scope (e.g. a dialog or a FocusTraversalGroup). FocusNode.requestFocus() can move focus to any node regardless of scope. In practice, calling requestFocus() on a specific FocusNode is the most common and reliable approach for programmatic focus management."
+  />
+</Quiz>

@@ -1,0 +1,241 @@
+---
+sidebar_position: 2
+slug: /chapters/focus/management
+title: "Part 2: Focus Management"
+description: "Fix focus management on step transitions and dynamic content"
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Part 2: Focus Management
+
+In Part 1, you verified that the Login screen's default tab order works and caught a bug on the Transfer screen: when advancing between steps, focus does not move to the new step's first field.
+
+---
+
+## The Problem
+
+Look at the Transfer screen's `_onStepContinue` method:
+
+```dart title="lib/screens/transfer_screen.dart (lines 39-46)"
+void _onStepContinue() {
+  if (_currentStep < 2) {
+    // BUG: No focus management on step change
+    setState(() => _currentStep += 1);
+  } else {
+    _showConfirmation();
+  }
+}
+```
+
+The method calls `setState` to advance the step counter. Flutter rebuilds the `Stepper`, which shows the next step's content. But no code moves focus to the new content. The result:
+
+- **Sighted users** see the new step appear and intuitively look at it
+- **Keyboard users** are stranded -- focus is on the old Continue button (or nowhere useful)
+- **Screen reader users** hear nothing about the step change -- they do not know new content has appeared
+
+This violates WCAG 2.4.3 (Focus Order) and 3.2.2 (On Input): when the user triggers a UI change, focus should move to a logical starting point in the new content.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Why Not Just Tab Forward?</div>
+  <p>A keyboard user could theoretically press Tab repeatedly to find the new field. But this is unreliable: the Stepper may collapse the previous step's content, removing its focusable elements from the tree. The user would need to Tab through an unknown number of elements to reach the new field. Programmatic focus management eliminates this guesswork.</p>
+</div>
+
+---
+
+## The Fix: `FocusScope.requestFocus()`
+
+The fix requires two changes:
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Create a FocusNode for each step's first field</div>
+
+Declare a `FocusNode` for the first `TextField` in each step:
+
+```dart
+final _recipientFocusNode = FocusNode();
+final _amountFocusNode = FocusNode();
+final _referenceFocusNode = FocusNode();
+```
+
+Attach each to its `TextField`:
+
+```dart
+TextField(
+  controller: _recipientController,
+  focusNode: _recipientFocusNode,
+  decoration: const InputDecoration(hintText: 'Recipient name'),
+),
+```
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Request focus after the step change</div>
+
+After calling `setState`, schedule a post-frame callback that requests focus on the new step's field. This must happen after the frame builds so the new field exists in the widget tree:
+
+```dart
+void _onStepContinue() {
+  if (_currentStep < 2) {
+    setState(() => _currentStep += 1);
+    // FIX: Move focus to the new step's first field
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      switch (_currentStep) {
+        case 1:
+          _amountFocusNode.requestFocus();
+          break;
+        case 2:
+          _referenceFocusNode.requestFocus();
+          break;
+      }
+    });
+  } else {
+    _showConfirmation();
+  }
+}
+```
+
+  </div>
+</div>
+
+### Full Before/After
+
+<Tabs>
+  <TabItem value="before" label="🔴 Before (Failing)" default>
+
+```dart title="lib/screens/transfer_screen.dart (current — buggy)"
+void _onStepContinue() {
+  if (_currentStep < 2) {
+    // BUG: No announcement, no focus management
+    setState(() => _currentStep += 1);
+  } else {
+    _showConfirmation();
+  }
+}
+```
+
+  </TabItem>
+  <TabItem value="after" label="🟢 After (Fixed)">
+
+```dart title="lib/screens/transfer_screen.dart (fixed)"
+// highlight-start
+void _onStepContinue() {
+  if (_currentStep < 2) {
+    setState(() => _currentStep += 1);
+    // FIX: Move focus to the new step's first field after build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      switch (_currentStep) {
+        case 1:
+          _amountFocusNode.requestFocus();
+          break;
+        case 2:
+          _referenceFocusNode.requestFocus();
+          break;
+      }
+    });
+  } else {
+    _showConfirmation();
+  }
+}
+// highlight-end
+```
+
+  </TabItem>
+</Tabs>
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Do Not Edit transfer_screen.dart</div>
+  <p>We leave the bugs in place so the test continues to demonstrate the failure. The fix is shown for learning purposes.</p>
+</div>
+
+---
+
+## Focus Traversal Customisation
+
+For the Login and Transfer screens, the default reading-order traversal works well because the layout is a simple vertical `Column`. But what if your layout has a more complex arrangement?
+
+### `FocusTraversalOrder` and `NumericFocusOrder`
+
+Flutter provides `FocusTraversalOrder` to override the default traversal sequence. Wrap each focusable widget with a `FocusTraversalOrder` and assign a `NumericFocusOrder`:
+
+```dart
+FocusTraversalGroup(
+  policy: OrderedTraversalPolicy(),
+  child: Column(
+    children: [
+      FocusTraversalOrder(
+        order: const NumericFocusOrder(1),
+        child: TextField(/* email */),
+      ),
+      FocusTraversalOrder(
+        order: const NumericFocusOrder(2),
+        child: TextField(/* password */),
+      ),
+      FocusTraversalOrder(
+        order: const NumericFocusOrder(3),
+        child: ElevatedButton(/* sign in */),
+      ),
+    ],
+  ),
+),
+```
+
+Lower numbers receive focus first. This is useful when the visual layout does not match the logical reading order -- for example, a two-column form where the left column should be traversed before the right column.
+
+### When to Use Explicit Ordering
+
+| Scenario | Approach |
+|----------|----------|
+| Simple vertical form | Default traversal (no customisation needed) |
+| Two-column layout | `FocusTraversalGroup` with `NumericFocusOrder` |
+| Stepper / wizard | Programmatic `requestFocus()` on step change |
+| Dialog appears | Flutter handles dialog focus automatically via `FocusScope` |
+| Dynamic content | `requestFocus()` on the first new element after it builds |
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">FocusTraversalGroup</div>
+  <p>A <code>FocusTraversalGroup</code> creates a self-contained traversal scope. Tab moves through all elements in the group before moving to elements outside it. This prevents focus from jumping unexpectedly between unrelated sections of the UI.</p>
+</div>
+
+---
+
+## Testing Focus Programmatically
+
+When testing focus management, the key assertion is whether a specific widget's `FocusNode` has focus after an action. The pattern used in our tests:
+
+```dart
+// Get the element and its focus node
+final focusContext = tester.element(amountField);
+final focusNode = Focus.of(focusContext);
+expect(focusNode.hasFocus, isTrue);
+```
+
+`Focus.of(context)` walks up the widget tree from the given element to find the nearest `Focus` widget and returns its `FocusNode`. Checking `hasFocus` tells you whether that specific focus scope has input focus.
+
+An alternative approach checks `FocusManager.instance.primaryFocus` directly, but this gives you the lowest-level focus node (which might be an internal node of a `TextField`, not the `TextField` itself). The `Focus.of()` approach is more precise for verifying that a specific widget has focus.
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `FocusNode.requestFocus()` | Programmatically moves focus to a specific widget |
+| `WidgetsBinding.addPostFrameCallback` | Schedules code to run after the current frame builds -- necessary when the target widget does not exist yet |
+| `FocusTraversalOrder` | Wraps a widget to assign an explicit traversal position |
+| `NumericFocusOrder(n)` | Specifies traversal order numerically -- lower numbers are visited first |
+| `FocusTraversalGroup` | Creates an isolated traversal scope -- Tab cycles through group members before leaving |
+| `Focus.of(context).hasFocus` | Checks whether a widget's enclosing focus scope has focus |
+
+---
+
+## What's Next
+
+Test your understanding of focus traversal and management in the [Chapter 5 Quiz](/chapters/focus/quiz).

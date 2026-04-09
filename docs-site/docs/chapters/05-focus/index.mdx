@@ -5,12 +5,375 @@ title: "Chapter 5: Focus Traversal"
 description: "Test keyboard tab order and focus management on forms"
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Chapter 5: Focus Traversal
 
-> *Coming soon*
+> *"A sighted user can jump to any part of the screen instantly. A keyboard or switch-access user moves through the interface one element at a time. If the order is wrong, the experience is broken."*
 
-**Estimated time:** ~25 minutes | **Focus:** Forms & Navigation | **Branch:** `chapter-5-focus`
+**Estimated time:** ~25 minutes | **Focus:** Login + Transfer | **Branch:** `chapter-5-focus`
 
 ---
 
-Content for this chapter is being written. Check back soon!
+## Why Focus Order Matters
+
+Not every user interacts with a touchscreen. Many users navigate apps using:
+
+- **External keyboards** (Bluetooth keyboards on tablets, desktop mode)
+- **Switch access devices** (assistive hardware that emulates Tab and Enter)
+- **Screen readers** (which follow the focus order to navigate)
+- **D-pad / TV remotes** (Android TV, automotive displays)
+
+All of these input methods move through the UI sequentially, one focusable element at a time. If the focus order does not match the visual order, these users experience a disorienting, unpredictable interface.
+
+WCAG 2.4.3 (Focus Order) requires that when content can be navigated sequentially, focusable components receive focus in an order that preserves meaning and operability.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Focus vs. Tab Order</div>
+  <p>"Focus order" and "tab order" are often used interchangeably. Strictly, "focus order" is the sequence in which elements receive focus regardless of input method, while "tab order" specifically refers to the sequence when pressing the Tab key. In Flutter, both are governed by the same focus traversal system.</p>
+</div>
+
+---
+
+## Part 1: Tab Order
+
+### The Tools
+
+Flutter's test framework provides `tester.sendKeyEvent()` to simulate keyboard input. Combined with `FocusManager.instance.primaryFocus`, you can verify which widget has focus after each Tab press.
+
+```dart
+// Send a Tab key event
+await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+await tester.pump();
+
+// Check what has focus
+final focusNode = FocusManager.instance.primaryFocus;
+```
+
+The `LogicalKeyboardKey` class provides constants for every key on the keyboard. `LogicalKeyboardKey.tab` sends a Tab press, which moves focus to the next element in the traversal order.
+
+### Default Focus Order in Flutter
+
+By default, Flutter traverses focusable widgets in **reading order** -- left to right, top to bottom. For a simple `Column` of form fields, this means focus moves from the first field to the second, then the third, and so on. This matches what users expect.
+
+Problems arise when:
+- The visual layout does not match the widget tree order
+- Custom widgets break the default traversal
+- Dynamic content changes the set of focusable elements without updating focus
+
+---
+
+## Writing the Test File
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Create <code>test/accessibility/focus_test.dart</code> with the code below. The Login screen tests will <strong>pass</strong> (default tab order works correctly). The Transfer screen tests will <strong>fail</strong> because focus does not move when steps advance.</p>
+</div>
+
+<Tabs>
+  <TabItem value="failing" label="🔴 Full Test File" default>
+
+```dart title="test/accessibility/focus_test.dart"
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:checkbank/screens/login_screen.dart';
+import 'package:checkbank/screens/transfer_screen.dart';
+
+void main() {
+  // ---------------------------------------------------------------------------
+  // Tab order — Login screen
+  // ---------------------------------------------------------------------------
+  group('Login screen — tab order', () {
+    testWidgets('email field can receive focus', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      final emailField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == 'Email address',
+      );
+      expect(emailField, findsOneWidget);
+
+      // Tap the email field to give it focus
+      await tester.tap(emailField);
+      await tester.pump();
+
+      // GREEN: The email field receives focus when tapped.
+      final focusNode = FocusManager.instance.primaryFocus;
+      expect(focusNode, isNotNull,
+          reason: 'Email field should receive focus when tapped');
+    });
+
+    testWidgets('tab moves focus from email to password', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      // Focus the email field
+      final emailField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == 'Email address',
+      );
+      await tester.tap(emailField);
+      await tester.pump();
+
+      // Press Tab to move to password field
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+
+      // GREEN: Tab moves focus forward in the Column.
+      final focusNode = FocusManager.instance.primaryFocus;
+      expect(focusNode, isNotNull,
+          reason: 'Focus should move to next field after Tab');
+    });
+
+    testWidgets('tab order visits all interactive elements', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      // Focus the email field to start
+      final emailField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == 'Email address',
+      );
+      await tester.tap(emailField);
+      await tester.pump();
+
+      // Tab through and count distinct focus nodes
+      final visited = <String>{};
+      for (int i = 0; i < 10; i++) {
+        final focus = FocusManager.instance.primaryFocus;
+        if (focus != null) {
+          visited.add(focus.debugLabel ?? 'node-$i');
+        }
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+      }
+
+      // GREEN: At least email and password fields are visited.
+      expect(visited.length, greaterThanOrEqualTo(2),
+          reason:
+              'Tab order should visit at least email and password fields');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Focus management — Transfer screen step advance
+  // ---------------------------------------------------------------------------
+  group('Transfer screen — focus management on step advance', () {
+    testWidgets('step 1 recipient field can receive focus', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: TransferScreen()),
+      );
+
+      final recipientField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == 'Recipient name',
+      );
+      expect(recipientField, findsOneWidget);
+
+      await tester.tap(recipientField);
+      await tester.pump();
+
+      // GREEN: Tapping the field gives it focus.
+      final focus = FocusManager.instance.primaryFocus;
+      expect(focus, isNotNull,
+          reason: 'Recipient field should receive focus when tapped');
+    });
+
+    testWidgets('advancing to step 2 moves focus to amount field',
+        (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: TransferScreen()),
+      );
+
+      // Fill step 1 fields
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Recipient name',
+        ),
+        'Jane Smith',
+      );
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Sort code',
+        ),
+        '12-34-56',
+      );
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Account number',
+        ),
+        '12345678',
+      );
+
+      // Tap Continue to advance to step 2
+      await tester.tap(find.text('Continue').first);
+      await tester.pumpAndSettle();
+
+      // The Amount field should be visible
+      final amountField = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.hintText == 'Amount (£)',
+      );
+      expect(amountField, findsOneWidget);
+
+      // RED: Focus should move to Amount field automatically.
+      // BUG: TransferScreen does not call requestFocus() on step change.
+      final focusContext = tester.element(amountField);
+      final focusNode = Focus.of(focusContext);
+      expect(focusNode.hasFocus, isTrue,
+          reason:
+              'Focus should move to the Amount field when step 2 becomes '
+              'active — screen reader users need focus to track the UI');
+    });
+
+    testWidgets('advancing to step 3 moves focus to reference field',
+        (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: TransferScreen()),
+      );
+
+      // Fill step 1 and advance
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Recipient name',
+        ),
+        'Jane Smith',
+      );
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Sort code',
+        ),
+        '12-34-56',
+      );
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Account number',
+        ),
+        '12345678',
+      );
+      await tester.tap(find.text('Continue').first);
+      await tester.pumpAndSettle();
+
+      // Fill step 2 and advance
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Amount (£)',
+        ),
+        '50.00',
+      );
+      await tester.tap(find.text('Continue').first);
+      await tester.pumpAndSettle();
+
+      // Reference field should be visible
+      final referenceField = find.byWidgetPredicate(
+        (w) =>
+            w is TextField && w.decoration?.hintText == 'Payment reference',
+      );
+      expect(referenceField, findsOneWidget);
+
+      // RED: Same bug — focus does not move to the new step's field.
+      final focusContext = tester.element(referenceField);
+      final focusNode = Focus.of(focusContext);
+      expect(focusNode.hasFocus, isTrue,
+          reason:
+              'Focus should move to the Reference field when step 3 '
+              'becomes active');
+    });
+  });
+}
+```
+
+  </TabItem>
+</Tabs>
+
+### Walking Through the Tests
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Login tab order (passes)</div>
+
+The Login screen's `Column` layout places the email field above the password field above the button. Flutter's default focus traversal follows this top-to-bottom order, so Tab moves focus correctly. These tests pass without any special effort -- the default traversal system works well for simple linear layouts.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Transfer step 1 focus (passes)</div>
+
+Tapping the Recipient name field gives it focus. This is basic interactive behaviour that works correctly.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Transfer step advance (fails)</div>
+
+This is where the bug lives. When the user fills in step 1 and taps "Continue", the `Stepper` advances to step 2 and reveals the Amount field. But focus does not move to that field. It stays wherever it was -- likely on the Continue button, which may not even be the same Continue button anymore (the Stepper rebuilds on step change).
+
+A keyboard or screen reader user is now lost. They hear nothing about the new step. They must manually navigate to find the Amount field.
+
+  </div>
+</div>
+
+---
+
+## Run the Tests
+
+```bash title="Terminal"
+flutter test test/accessibility/focus_test.dart
+```
+
+Expected output:
+
+```
++4 -2: Some tests failed.
+```
+
+Four tests pass (Login tab order and Transfer step 1 focus). Two tests fail:
+
+- **"advancing to step 2 moves focus to amount field"** -- focus does not move when the step changes
+- **"advancing to step 3 moves focus to reference field"** -- same bug on the next step transition
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You have verified that the Login screen's default tab order works correctly and caught a focus management bug on the Transfer screen. When the Stepper advances, focus must move to the new step's first field so keyboard and screen reader users can follow the flow.</p>
+</div>
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `tester.sendKeyEvent(LogicalKeyboardKey.tab)` | Simulates pressing the Tab key, which moves focus to the next element in the traversal order |
+| `FocusManager.instance.primaryFocus` | Returns the `FocusNode` that currently has primary input focus |
+| `Focus.of(context).hasFocus` | Checks whether a specific widget's focus node has focus |
+| WCAG 2.4.3 (Focus Order) | Focusable components must receive focus in an order that preserves meaning |
+| Default traversal | Flutter traverses focusable widgets in reading order (left-to-right, top-to-bottom) by default |
+
+---
+
+## What's Next
+
+The tab order tests verify the sequence. In [Part 2: Focus Management](/chapters/focus/management), you will learn how to fix the Transfer screen's step-advance bug and explore `FocusScope.requestFocus()` for programmatic focus control.
