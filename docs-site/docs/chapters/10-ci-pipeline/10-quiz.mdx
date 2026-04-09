@@ -1,0 +1,78 @@
+---
+sidebar_position: 3
+slug: /chapters/ci-pipeline/quiz
+title: "Quiz: The CI Pipeline"
+---
+
+import { Quiz, QuizQuestion } from '@site/src/components/Quiz';
+
+# Quiz: The CI Pipeline
+
+<Quiz chapterId="ch10">
+  <QuizQuestion
+    question="What does the @Tags(['accessibility']) annotation do in a test file?"
+    options={[
+      "Makes the tests run faster",
+      "Marks the file so it can be filtered with flutter test --tags accessibility",
+      "Adds accessibility assertions automatically",
+      "Prevents the tests from running locally"
+    ]}
+    correctIndex={1}
+    explanation="@Tags(['accessibility']) is metadata that labels a test file. When you run flutter test --tags accessibility, only files with this tag are executed. This lets the CI pipeline run accessibility tests as a dedicated job, separate from other tests."
+  />
+  <QuizQuestion
+    question="Why does the CI pipeline run both dart analyze and flutter test?"
+    options={[
+      "They are the same check — running both is redundant",
+      "dart analyze catches code-level patterns before compilation, while flutter test checks runtime behaviour — they catch different categories of issues",
+      "dart analyze is faster, so it warms up the CI server for flutter test",
+      "flutter test only works after dart analyze passes"
+    ]}
+    correctIndex={1}
+    explanation="Static analysis (dart analyze) examines source code patterns without running the app — it catches issues like unnecessary containers, type errors, and deprecated APIs. Flutter test executes the tests and checks runtime behaviour like semantics flags, labels, and live regions. Both are needed because they catch fundamentally different types of problems."
+  />
+  <QuizQuestion
+    question="What does the --coverage flag do when running flutter test?"
+    options={[
+      "Checks whether all widgets have semantic labels",
+      "Generates a coverage/lcov.info file showing which lines of source code were executed during the tests",
+      "Runs the tests on all available devices",
+      "Measures how many WCAG criteria the app passes"
+    ]}
+    correctIndex={1}
+    explanation="The --coverage flag generates a coverage/lcov.info file that records which lines in lib/ were executed during the test run. This shows which parts of your source code are exercised by your tests — useful for finding screens or widgets with no test coverage at all."
+  />
+  <QuizQuestion
+    question="Why is if: always() used on the audit report generation step?"
+    options={[
+      "To make the step run faster",
+      "To ensure the report is generated even if the tests fail — the report documents what failed",
+      "To retry the step if it fails the first time",
+      "To run the step on every operating system"
+    ]}
+    correctIndex={1}
+    explanation="Without if: always(), a failing test step would skip all subsequent steps, including report generation. With if: always(), the audit report is produced regardless of test results. This is important because when tests fail, the report documents which tests failed — giving reviewers visibility into the accessibility state of the PR."
+  />
+  <QuizQuestion
+    question="What does actions/upload-artifact@v4 do in the workflow?"
+    options={[
+      "Deploys the app to production",
+      "Uploads a file (the audit report) as a downloadable artifact on the GitHub Actions run page",
+      "Publishes the report to the project wiki",
+      "Sends the report to all team members via email"
+    ]}
+    correctIndex={1}
+    explanation="actions/upload-artifact@v4 takes a file from the CI runner and uploads it as a downloadable artifact attached to the GitHub Actions run. Anyone reviewing the PR can click into the Actions tab and download the audit report to see test results, analysis output, and coverage percentage."
+  />
+  <QuizQuestion
+    question="A PR passes all accessibility tests but has 0% coverage on the Settings screen. What does this tell you?"
+    options={[
+      "The Settings screen is fully accessible",
+      "No accessibility test file exercises any code in the Settings screen — it is a gap in your test suite",
+      "The Settings screen does not exist",
+      "The coverage tool has a bug"
+    ]}
+    correctIndex={1}
+    explanation="Zero coverage means no test touched any code in the Settings screen. The tests that exist might all pass, but they do not test the Settings screen at all. This is a gap — the screen could have accessibility bugs that no test will catch. Coverage helps you identify these untested areas so you can add tests for them."
+  />
+</Quiz>

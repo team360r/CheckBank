@@ -1,0 +1,69 @@
+name: Accessibility Audit
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  analyze:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+      - run: flutter pub get
+      - run: dart analyze
+
+  accessibility-tests:
+    name: Accessibility Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+      - run: flutter pub get
+      - run: flutter test --tags accessibility
+      - run: flutter test --coverage --tags accessibility
+      - name: Generate audit report
+        if: always()
+        run: |
+          echo "# Accessibility Audit Report" > audit-report.md
+          echo "" >> audit-report.md
+          echo "**Date:** $(date -u +'%Y-%m-%d %H:%M UTC')" >> audit-report.md
+          echo "**Commit:** ${{ github.sha }}" >> audit-report.md
+          echo "" >> audit-report.md
+          echo "## Static Analysis" >> audit-report.md
+          echo '```' >> audit-report.md
+          dart analyze 2>&1 | tail -5 >> audit-report.md || true
+          echo '```' >> audit-report.md
+          echo "" >> audit-report.md
+          echo "## Accessibility Test Results" >> audit-report.md
+          echo '```' >> audit-report.md
+          flutter test --tags accessibility 2>&1 | tail -10 >> audit-report.md || true
+          echo '```' >> audit-report.md
+          echo "" >> audit-report.md
+          echo "## Coverage" >> audit-report.md
+          if [ -f coverage/lcov.info ]; then
+            LINES=$(grep -c 'DA:' coverage/lcov.info || echo 0)
+            HIT=$(grep 'DA:' coverage/lcov.info | grep -cv ',0$' || echo 0)
+            if [ "$LINES" -gt 0 ]; then
+              PCT=$((HIT * 100 / LINES))
+              echo "Line coverage: **${PCT}%** (${HIT}/${LINES} lines)" >> audit-report.md
+            else
+              echo "No coverage data available." >> audit-report.md
+            fi
+          else
+            echo "No coverage file generated." >> audit-report.md
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: accessibility-audit
+          path: audit-report.md

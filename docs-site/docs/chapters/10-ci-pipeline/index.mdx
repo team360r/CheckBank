@@ -5,12 +5,175 @@ title: "Chapter 10: The CI Pipeline — Ship With Confidence"
 description: "Build a GitHub Actions pipeline with an automated audit report"
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Chapter 10: The CI Pipeline — Ship With Confidence
 
-> *Coming soon*
+> *"Tests you run locally are a suggestion. Tests that run on every pull request are a guarantee."*
 
 **Estimated time:** ~25 minutes | **Focus:** CI/CD | **Branch:** `chapter-10-ci-pipeline`
 
 ---
 
-Content for this chapter is being written. Check back soon!
+## Why CI for Accessibility?
+
+You have written accessibility tests across seven chapters. Every test runs with `flutter test` on your machine. But what happens when a teammate pushes code that breaks accessibility? What happens six months from now when no one remembers to run the accessibility tests?
+
+A CI (Continuous Integration) pipeline makes the tests automatic. Every pull request triggers the pipeline. If any accessibility test fails, the PR cannot be merged. No regression ships without a test catching it first.
+
+### The Pipeline Structure
+
+The pipeline has two jobs:
+
+| Job | What It Does |
+|-----|-------------|
+| **Static Analysis** | Runs `dart analyze` to catch code-level issues |
+| **Accessibility Tests** | Runs all tests tagged `accessibility`, generates a coverage report, and produces an audit artifact |
+
+---
+
+## Tagging Tests
+
+Before building the pipeline, you need a way to run only accessibility tests. Flutter supports test tags -- metadata that lets you run subsets of your test suite.
+
+Add the `@Tags` annotation to your accessibility test files:
+
+```dart title="test/accessibility/labels_test.dart"
+@Tags(['accessibility'])
+library;
+
+import 'package:flutter_test/flutter_test.dart';
+// ... rest of the test file
+```
+
+The `@Tags` annotation goes at the very top of the file, before any imports. The `library;` directive is required when annotations appear before imports in Dart.
+
+Add this annotation to every test file in `test/accessibility/`:
+
+- `labels_test.dart`
+- `roles_states_test.dart`
+- `contrast_test.dart`
+- `sizing_test.dart`
+- `focus_test.dart`
+- `announcements_test.dart`
+- `tda_quick_pay_test.dart`
+
+You also need to configure tags in `dart_test.yaml` at the project root:
+
+```yaml title="dart_test.yaml"
+tags:
+  accessibility:
+    description: "Accessibility-focused tests"
+```
+
+Now you can run only accessibility tests:
+
+```bash title="Terminal"
+flutter test --tags accessibility
+```
+
+This runs every test file annotated with `@Tags(['accessibility'])` and skips everything else.
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Tags Are Optional for Local Development</div>
+  <p>You can still run all tests with <code>flutter test</code> (no <code>--tags</code> flag). Tags are a filtering mechanism -- they do not prevent tests from running normally. The CI pipeline uses tags to run accessibility tests as a dedicated job with its own reporting.</p>
+</div>
+
+---
+
+## The GitHub Actions Workflow
+
+Create `.github/workflows/accessibility-audit.yml`:
+
+```yaml title=".github/workflows/accessibility-audit.yml"
+name: Accessibility Audit
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  analyze:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+      - run: flutter pub get
+      - run: dart analyze
+
+  accessibility-tests:
+    name: Accessibility Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+      - run: flutter pub get
+      - run: flutter test --tags accessibility
+```
+
+### Walking Through the Workflow
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Trigger: on pull_request and push to main</div>
+
+The workflow runs on every pull request targeting `main` and every push directly to `main`. PRs are checked before merging -- if tests fail, the PR is blocked. Direct pushes to main are also checked -- if someone bypasses PRs, the pipeline still catches regressions.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Job 1: Static Analysis</div>
+
+The `analyze` job checks out the code, installs Flutter, and runs `dart analyze`. If the analyzer reports any errors or warnings, the job fails. This catches code-level issues like the patterns from Chapter 9 (unnecessary containers, deprecated APIs, type mismatches).
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Job 2: Accessibility Tests</div>
+
+The `accessibility-tests` job runs `flutter test --tags accessibility`. This executes only the tagged accessibility test files. If any test fails, the job fails and the PR is blocked.
+
+The two jobs run in parallel -- `analyze` and `accessibility-tests` do not depend on each other. If one fails and the other passes, you see exactly which check needs attention.
+
+  </div>
+</div>
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Flutter Version Pinning</div>
+  <p>The workflow pins Flutter to version <code>3.22.0</code>. This ensures the CI environment matches your local development environment. If your project uses a different Flutter version, update the <code>flutter-version</code> field. Mismatched Flutter versions can cause tests to pass locally but fail in CI (or vice versa).</p>
+</div>
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `@Tags(['accessibility'])` | Annotates a test file so it can be filtered with `--tags` |
+| `dart_test.yaml` | Configures test tags and their descriptions |
+| `flutter test --tags accessibility` | Runs only tests tagged with `accessibility` |
+| `subosito/flutter-action@v2` | GitHub Action that installs Flutter in the CI environment |
+| `dart analyze` | Runs static analysis as a CI check |
+
+---
+
+## What's Next
+
+In [Part 2: The Audit Report](/chapters/ci-pipeline/audit-report), you will add coverage reporting and generate a markdown audit artifact on every run.

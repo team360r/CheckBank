@@ -1,0 +1,268 @@
+---
+sidebar_position: 2
+slug: /chapters/ci-pipeline/audit-report
+title: "Part 2: The Audit Report"
+description: "Generate coverage and a markdown audit artifact in CI"
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Part 2: The Audit Report
+
+In Part 1, you built a CI pipeline that runs static analysis and accessibility tests on every pull request. Now you will add coverage reporting and generate a downloadable audit report as a CI artifact.
+
+---
+
+## Adding Coverage
+
+Flutter can generate code coverage data alongside test results using the `--coverage` flag:
+
+```bash title="Terminal"
+flutter test --coverage --tags accessibility
+```
+
+This creates a `coverage/lcov.info` file containing line-by-line coverage data. The coverage shows which lines of your source code were executed during the accessibility tests.
+
+### What Coverage Measures
+
+Coverage answers: "Which lines of `lib/` code were touched by my accessibility tests?" This is useful for identifying screens or widgets that have no accessibility test coverage at all.
+
+| Coverage | Meaning |
+|----------|---------|
+| High coverage on a screen | Your accessibility tests exercise most of the widget's code paths |
+| Zero coverage on a screen | No accessibility test touches this screen -- potential gap |
+| Low coverage on a widget | Only some states/branches are tested -- edge cases may have accessibility bugs |
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Coverage Is Not Completeness</div>
+  <p>100% line coverage does not mean 100% accessibility. A test can execute every line of code without checking any accessibility property. Coverage tells you what code <em>runs</em> during tests, not what <em>assertions</em> are made. Use coverage to find untested screens, not to measure accessibility quality.</p>
+</div>
+
+---
+
+## The Audit Report Step
+
+Add a step to the CI workflow that generates a markdown summary after the tests run:
+
+```yaml title=".github/workflows/accessibility-audit.yml (accessibility-tests job)"
+      - run: flutter test --coverage --tags accessibility
+      - name: Generate audit report
+        if: always()
+        run: |
+          echo "# Accessibility Audit Report" > audit-report.md
+          echo "" >> audit-report.md
+          echo "**Date:** $(date -u +'%Y-%m-%d %H:%M UTC')" >> audit-report.md
+          echo "**Commit:** ${{ github.sha }}" >> audit-report.md
+          echo "" >> audit-report.md
+          echo "## Static Analysis" >> audit-report.md
+          echo '```' >> audit-report.md
+          dart analyze 2>&1 | tail -5 >> audit-report.md || true
+          echo '```' >> audit-report.md
+          echo "" >> audit-report.md
+          echo "## Accessibility Test Results" >> audit-report.md
+          echo '```' >> audit-report.md
+          flutter test --tags accessibility 2>&1 | tail -10 >> audit-report.md || true
+          echo '```' >> audit-report.md
+          echo "" >> audit-report.md
+          echo "## Coverage" >> audit-report.md
+          if [ -f coverage/lcov.info ]; then
+            LINES=$(grep -c 'DA:' coverage/lcov.info || echo 0)
+            HIT=$(grep 'DA:' coverage/lcov.info | grep -cv ',0$' || echo 0)
+            if [ "$LINES" -gt 0 ]; then
+              PCT=$((HIT * 100 / LINES))
+              echo "Line coverage: **${PCT}%** (${HIT}/${LINES} lines)" >> audit-report.md
+            else
+              echo "No coverage data available." >> audit-report.md
+            fi
+          else
+            echo "No coverage file generated." >> audit-report.md
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: accessibility-audit
+          path: audit-report.md
+```
+
+### How It Works
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Generate the report (if: always())</div>
+
+The `if: always()` condition means the report is generated even if the tests fail. This is important -- when tests fail, the report documents what failed. Without `if: always()`, a failing test would skip the report generation step.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Capture test output</div>
+
+The script runs `flutter test --tags accessibility` again and captures the last 10 lines of output (which contain the summary). The `|| true` ensures the script continues even if the tests fail (they return a non-zero exit code on failure).
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Calculate coverage percentage</div>
+
+The script parses `coverage/lcov.info` to count total lines and hit lines. `DA:` lines in the LCOV format represent individual source code lines -- lines ending in `,0` were not executed. The script calculates a percentage from these counts.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">4</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Upload as an artifact</div>
+
+The `actions/upload-artifact@v4` step uploads the markdown file as a downloadable artifact on the GitHub Actions run. Anyone reviewing the PR can download the report to see the full audit summary.
+
+  </div>
+</div>
+
+---
+
+## The Complete Workflow
+
+<Tabs>
+  <TabItem value="workflow" label="Full Workflow File" default>
+
+```yaml title=".github/workflows/accessibility-audit.yml"
+name: Accessibility Audit
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  analyze:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+      - run: flutter pub get
+      - run: dart analyze
+
+  accessibility-tests:
+    name: Accessibility Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+      - run: flutter pub get
+      - run: flutter test --tags accessibility
+      - run: flutter test --coverage --tags accessibility
+      - name: Generate audit report
+        if: always()
+        run: |
+          echo "# Accessibility Audit Report" > audit-report.md
+          echo "" >> audit-report.md
+          echo "**Date:** $(date -u +'%Y-%m-%d %H:%M UTC')" >> audit-report.md
+          echo "**Commit:** ${{ github.sha }}" >> audit-report.md
+          echo "" >> audit-report.md
+          echo "## Static Analysis" >> audit-report.md
+          echo '```' >> audit-report.md
+          dart analyze 2>&1 | tail -5 >> audit-report.md || true
+          echo '```' >> audit-report.md
+          echo "" >> audit-report.md
+          echo "## Accessibility Test Results" >> audit-report.md
+          echo '```' >> audit-report.md
+          flutter test --tags accessibility 2>&1 | tail -10 >> audit-report.md || true
+          echo '```' >> audit-report.md
+          echo "" >> audit-report.md
+          echo "## Coverage" >> audit-report.md
+          if [ -f coverage/lcov.info ]; then
+            LINES=$(grep -c 'DA:' coverage/lcov.info || echo 0)
+            HIT=$(grep 'DA:' coverage/lcov.info | grep -cv ',0$' || echo 0)
+            if [ "$LINES" -gt 0 ]; then
+              PCT=$((HIT * 100 / LINES))
+              echo "Line coverage: **${PCT}%** (${HIT}/${LINES} lines)" >> audit-report.md
+            else
+              echo "No coverage data available." >> audit-report.md
+            fi
+          else
+            echo "No coverage file generated." >> audit-report.md
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: accessibility-audit
+          path: audit-report.md
+```
+
+  </TabItem>
+</Tabs>
+
+---
+
+## What the Pipeline Produces
+
+On every pull request, the pipeline:
+
+1. **Runs `dart analyze`** -- catches code-level issues before tests
+2. **Runs all `@Tags(['accessibility'])` tests** -- verifies every accessibility assertion passes
+3. **Generates a coverage report** -- shows which source lines are exercised by accessibility tests
+4. **Uploads an audit artifact** -- a downloadable markdown summary with test results, analysis output, and coverage percentage
+
+If any step fails, the PR is blocked. The audit report is generated regardless of pass/fail status, so reviewers always have visibility into the accessibility state of the codebase.
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">The Living Audit</div>
+  <p>Your audit now runs on every pull request. No accessibility regression ships without a test catching it first. The audit report is a living document -- it reflects the current state of your accessibility test suite on every commit. This is the final piece of the accessibility testing workflow: tests catch bugs, CI enforces them, and the report documents them.</p>
+</div>
+
+---
+
+## The Complete Accessibility Testing Stack
+
+Here is the full stack you have built across Chapters 0 through 10:
+
+| Layer | Chapter | What It Does |
+|-------|---------|-------------|
+| **Audit smoke test** | Ch 0 | Broad scan of semantics tree for common issues |
+| **Label tests** | Ch 1 | Verify every interactive element has a meaningful label |
+| **Role and state tests** | Ch 2 | Check button/toggle/selected roles and states |
+| **Contrast tests** | Ch 3 | Verify text meets WCAG AA contrast ratios |
+| **Sizing tests** | Ch 4 | Check minimum touch targets (48x48 dp) |
+| **Focus tests** | Ch 5 | Verify focus order and focus management |
+| **Announcement tests** | Ch 6 | Check live regions and dynamic announcements |
+| **Integration tests** | Ch 7 | Cross-screen journey with audit helper |
+| **TDA tests** | Ch 8 | Tests-first for new widgets |
+| **Static analysis** | Ch 9 | Code patterns caught before compilation |
+| **CI pipeline** | Ch 10 | Automated enforcement on every PR |
+
+Each layer catches a different category of accessibility issues. Together, they form a comprehensive safety net that makes accessibility a first-class engineering concern, not an afterthought.
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `flutter test --coverage` | Generates `coverage/lcov.info` with line-by-line coverage data |
+| `if: always()` | Ensures a CI step runs even if previous steps failed |
+| `actions/upload-artifact@v4` | Uploads a file as a downloadable artifact on the CI run |
+| `${{ github.sha }}` | GitHub Actions expression that resolves to the current commit hash |
+| Audit report artifact | A markdown summary downloaded by PR reviewers for accessibility visibility |
+
+---
+
+## What's Next
+
+Test your understanding of CI pipelines and automated testing in the [Chapter 10 Quiz](/chapters/ci-pipeline/quiz).
