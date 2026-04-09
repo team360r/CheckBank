@@ -1,0 +1,78 @@
+---
+sidebar_position: 3
+slug: /chapters/announcements/quiz
+title: "Quiz: Live Regions and Announcements"
+---
+
+import { Quiz, QuizQuestion } from '@site/src/components/Quiz';
+
+# Quiz: Live Regions and Announcements
+
+<Quiz chapterId="ch06">
+  <QuizQuestion
+    question="What is a live region in the context of accessibility?"
+    options={[
+      "A section of the UI that automatically refreshes from a server",
+      "A region of the UI that screen readers monitor for changes and automatically announce updates to the user",
+      "A widget that animates when its content changes",
+      "A scrollable area that loads content on demand"
+    ]}
+    correctIndex={1}
+    explanation="A live region is a section of the UI that screen readers monitor for changes. When the content inside a live region updates, the screen reader automatically announces the new content — even if the user's focus is elsewhere. This ensures that dynamic status changes (errors, counters, notifications) are communicated to screen reader users."
+  />
+  <QuizQuestion
+    question="How do you check whether a widget is a live region in a Flutter widget test?"
+    options={[
+      "tester.isLiveRegion(finder)",
+      "tester.getSemantics(finder).getSemanticsData().hasFlag(SemanticsFlag.isLiveRegion)",
+      "tester.widget<Semantics>(finder).liveRegion",
+      "FocusManager.instance.primaryFocus?.isLiveRegion"
+    ]}
+    correctIndex={1}
+    explanation="You use tester.getSemantics(finder) to get the semantics node for the widget, then call getSemanticsData().hasFlag(SemanticsFlag.isLiveRegion) to check the flag. This reads the actual accessibility tree that assistive technologies consume. Remember to call tester.ensureSemantics() before using getSemantics()."
+  />
+  <QuizQuestion
+    question="When should you use SemanticsService.announce() instead of a live region?"
+    options={[
+      "Always — SemanticsService.announce() is the preferred approach",
+      "Never — live regions handle all announcement needs",
+      "For one-time events that do not have a persistent widget, such as navigation transitions or transient confirmation messages",
+      "Only when the announcement needs to be in a specific language"
+    ]}
+    correctIndex={2}
+    explanation="SemanticsService.announce() is best for one-time, imperative announcements — events like 'Transfer submitted' or 'Step 2 of 3: Amount' that are transient and do not correspond to a persistent widget in the tree. Live regions are better for persistent widgets whose text changes over time (counters, error messages, status indicators)."
+  />
+  <QuizQuestion
+    question="What WCAG success criterion requires that status messages be announced to assistive technologies?"
+    options={[
+      "WCAG 1.4.3 — Contrast (Minimum)",
+      "WCAG 2.4.3 — Focus Order",
+      "WCAG 2.5.8 — Target Size",
+      "WCAG 4.1.3 — Status Messages"
+    ]}
+    correctIndex={3}
+    explanation="WCAG 4.1.3 (Status Messages) requires that status messages can be programmatically determined through role or properties so that they are presented to the user by assistive technologies without receiving focus. This applies to error messages, progress indicators, and any dynamic status change that the user needs to know about."
+  />
+  <QuizQuestion
+    question="A login form shows 'Invalid email or password' after a failed attempt, but the error text is a plain Text widget without Semantics(liveRegion: true). What happens for screen reader users?"
+    options={[
+      "The screen reader announces the error automatically because it detects new text on screen",
+      "The screen reader announces nothing — the user has no idea the login failed and may keep retrying",
+      "The screen reader moves focus to the error text automatically",
+      "The screen reader reads the entire screen from the beginning"
+    ]}
+    correctIndex={1}
+    explanation="Without a live region, screen readers do not monitor the error text for changes. When the error appears, nothing is announced. The user's focus stays on the 'Go' button (or wherever it was). The user has no audible feedback that the login failed. They might tap Go repeatedly, not understanding why nothing happens. Wrapping the error in Semantics(liveRegion: true) fixes this."
+  />
+  <QuizQuestion
+    question="Flutter's SnackBar widget appears after a user confirms a transfer. Do you need to add SemanticsService.announce() for the snackbar content?"
+    options={[
+      "Yes — all dynamic content needs an explicit announcement",
+      "No — Flutter's SnackBar already uses SemanticsService.announce() internally",
+      "Yes — but only if the snackbar has an action button",
+      "No — snackbars are decorative and should not be announced"
+    ]}
+    correctIndex={1}
+    explanation="Flutter's SnackBar implementation already calls SemanticsService.announce() when it appears, so the screen reader announces its content automatically. You do not need to add your own announcement for standard snackbars. This is an example of the framework handling accessibility correctly out of the box."
+  />
+</Quiz>

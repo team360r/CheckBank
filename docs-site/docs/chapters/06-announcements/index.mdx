@@ -5,12 +5,463 @@ title: "Chapter 6: Live Regions and Announcements"
 description: "Test dynamic content announcements for screen readers"
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Chapter 6: Live Regions and Announcements
 
-> *Coming soon*
+> *"If content changes on screen and the screen reader says nothing, did it really change?"*
 
-**Estimated time:** ~30 minutes | **Focus:** Dynamic content | **Branch:** `chapter-6-announcements`
+**Estimated time:** ~30 minutes | **Focus:** Login + Notifications | **Branch:** `chapter-6-announcements`
 
 ---
 
-Content for this chapter is being written. Check back soon!
+## What Is a Live Region?
+
+A live region is a section of the UI that screen readers **monitor for changes**. When the content inside a live region updates, the screen reader automatically announces the new content -- even if the user's focus is elsewhere on the screen.
+
+Without a live region, dynamic changes are invisible to screen reader users. An error message might flash on screen, a notification count might update, a progress indicator might complete -- but the screen reader stays silent. The user has no idea anything happened.
+
+WCAG 4.1.3 (Status Messages) requires that status messages can be programmatically determined through role or properties so that they are presented to the user by assistive technologies without receiving focus.
+
+### When to Use Live Regions
+
+| Scenario | Live Region? | Reason |
+|----------|-------------|--------|
+| Error message appears after form submission | **Yes** | User needs to know their submission failed |
+| Unread notification count changes | **Yes** | Dynamic counter that updates without user action on it |
+| "Items in cart" badge updates | **Yes** | Status indicator that changes based on user actions elsewhere |
+| Page content loads initially | **No** | Initial content is read by the screen reader on focus |
+| User navigates to a new screen | **No** | Screen readers announce the new screen title automatically |
+| Progress bar updates | **Depends** | Announce milestones (25%, 50%, 100%) but not every pixel change |
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Live Regions Are Not Free</div>
+  <p>Every live region update interrupts whatever the screen reader is currently saying. Use them for important status changes that the user needs to know about, not for decorative or non-essential updates. Too many live region announcements create a noisy, confusing experience.</p>
+</div>
+
+---
+
+## Part 1: Live Regions in Flutter
+
+In Flutter, you create a live region by wrapping a widget with the `Semantics` widget and setting `liveRegion: true`:
+
+```dart
+Semantics(
+  liveRegion: true,
+  child: Text('Invalid email or password'),
+),
+```
+
+When the `Text` inside this `Semantics` widget changes (or when the widget first appears), the screen reader announces the new text content.
+
+### Testing Live Regions
+
+To verify that a widget is a live region in a test, use `tester.getSemantics()` to get the semantics node and check the `SemanticsFlag.isLiveRegion` flag:
+
+```dart
+final semantics = tester.getSemantics(find.text('Invalid email or password'));
+expect(
+  semantics.getSemanticsData().hasFlag(SemanticsFlag.isLiveRegion),
+  isTrue,
+);
+```
+
+This reads the semantics tree (the accessibility tree that assistive technologies consume) and checks whether the node has the live region flag set.
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Remember: ensureSemantics()</div>
+  <p>Before any test that reads the semantics tree, call <code>handle = tester.ensureSemantics()</code> at the start and <code>handle.dispose()</code> at the end. This enables the semantics tree, which is normally disabled in tests for performance. Without it, <code>tester.getSemantics()</code> will throw.</p>
+</div>
+
+---
+
+## Writing the Test File
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Write This Test</div>
+  <p>Create <code>test/accessibility/announcements_test.dart</code> with the code below. Two tests will <strong>fail</strong>: the Login error message and the Notifications unread count are both missing <code>liveRegion: true</code>.</p>
+</div>
+
+<Tabs>
+  <TabItem value="failing" label="🔴 Full Test File" default>
+
+```dart title="test/accessibility/announcements_test.dart"
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:checkbank/screens/login_screen.dart';
+import 'package:checkbank/screens/notifications_screen.dart';
+import 'package:checkbank/providers/auth_provider.dart';
+
+void main() {
+  // ---------------------------------------------------------------------------
+  // Live regions — Login screen error message
+  // ---------------------------------------------------------------------------
+  group('Login screen — error live region', () {
+    late SemanticsHandle handle;
+
+    testWidgets('error message appears after invalid login', (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      // Submit with wrong credentials
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) =>
+              w is TextField && w.decoration?.hintText == 'Email address',
+        ),
+        'wrong@email.com',
+      );
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Password',
+        ),
+        'wrongpassword',
+      );
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Go'));
+      await tester.pump();
+
+      // GREEN: The error message text appears.
+      final errorText = find.text('Invalid email or password');
+      expect(errorText, findsOneWidget,
+          reason: 'Error message should appear after invalid login');
+
+      handle.dispose();
+    });
+
+    testWidgets('error message is in a live region', (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      // Submit with wrong credentials
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) =>
+              w is TextField && w.decoration?.hintText == 'Email address',
+        ),
+        'wrong@email.com',
+      );
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Password',
+        ),
+        'wrongpassword',
+      );
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Go'));
+      await tester.pump();
+
+      // RED: The error Text is NOT wrapped in Semantics(liveRegion: true).
+      // Screen readers will not announce it when it appears.
+      //
+      // FIX: Wrap the error Text in Semantics(liveRegion: true, child: ...)
+      final errorText = find.text('Invalid email or password');
+      expect(errorText, findsOneWidget);
+
+      final semantics = tester.getSemantics(errorText);
+      expect(
+        semantics.getSemanticsData().hasFlag(SemanticsFlag.isLiveRegion),
+        isTrue,
+        reason:
+            'Error message should be a live region so screen readers '
+            'announce it automatically when it appears',
+      );
+
+      handle.dispose();
+    });
+
+    testWidgets('successful login does not show error', (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: LoginScreen()),
+        ),
+      );
+
+      // Submit with correct credentials
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) =>
+              w is TextField && w.decoration?.hintText == 'Email address',
+        ),
+        'alex@checkbank.dev',
+      );
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Password',
+        ),
+        'password',
+      );
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Go'));
+      await tester.pump();
+
+      // GREEN: No error for valid credentials.
+      final errorText = find.text('Invalid email or password');
+      expect(errorText, findsNothing,
+          reason: 'No error should appear with valid credentials');
+
+      handle.dispose();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Live regions — Notifications screen unread count
+  // ---------------------------------------------------------------------------
+  group('Notifications screen — unread count live region', () {
+    late SemanticsHandle handle;
+
+    testWidgets('unread count is displayed', (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NotificationsScreen()),
+        ),
+      );
+
+      // GREEN: The unread count text is visible.
+      final unreadText = find.textContaining('unread');
+      expect(unreadText, findsOneWidget,
+          reason: 'Unread count should be displayed');
+
+      handle.dispose();
+    });
+
+    testWidgets('unread count is a live region', (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NotificationsScreen()),
+        ),
+      );
+
+      // RED: The unread count text is NOT in a live region.
+      // When the count changes, screen readers stay silent.
+      //
+      // FIX: Wrap the "$unread unread" Text in
+      // Semantics(liveRegion: true, child: ...)
+      final unreadText = find.textContaining('unread');
+      expect(unreadText, findsOneWidget);
+
+      final semantics = tester.getSemantics(unreadText);
+      expect(
+        semantics.getSemanticsData().hasFlag(SemanticsFlag.isLiveRegion),
+        isTrue,
+        reason:
+            'Unread count should be a live region so screen readers '
+            'announce changes when notifications are read',
+      );
+
+      handle.dispose();
+    });
+
+    testWidgets('mark all read updates unread count', (tester) async {
+      handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NotificationsScreen()),
+        ),
+      );
+
+      // Initially 2 unread
+      expect(find.text('2 unread'), findsOneWidget);
+
+      // Tap "Mark all read"
+      await tester.tap(find.byIcon(Icons.done_all));
+      await tester.pump();
+
+      // GREEN: Count updates to 0.
+      expect(find.text('0 unread'), findsOneWidget,
+          reason: 'Count should update to 0 after marking all read');
+
+      handle.dispose();
+    });
+  });
+}
+```
+
+  </TabItem>
+</Tabs>
+
+### Walking Through the Tests
+
+<div className="cb-step">
+  <div className="cb-step__badge">1</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Login error appears (passes)</div>
+
+The first test verifies that submitting invalid credentials shows the error message. This is a basic functional test -- the error text exists in the widget tree. It passes because the `AuthNotifier.login()` method sets `state.error` when credentials are wrong, and the `LoginScreen` conditionally renders the error `Text`.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">2</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Login error is a live region (fails)</div>
+
+The error message appears visually, but it is not wrapped in `Semantics(liveRegion: true)`. The test reads the semantics data for the error text and checks for the `isLiveRegion` flag. This flag is absent, so the test fails.
+
+In practice, a screen reader user who submits invalid credentials hears nothing. They have no idea the login failed. They might tap "Go" again and again, not understanding why nothing happens.
+
+  </div>
+</div>
+
+<div className="cb-step">
+  <div className="cb-step__badge">3</div>
+  <div className="cb-step__content">
+    <div className="cb-step__title">Unread count is a live region (fails)</div>
+
+The Notifications screen shows "2 unread" text. When the user taps "Mark all read", the count changes to "0 unread". But without `liveRegion: true`, the screen reader does not announce the change. The user does not know whether "Mark all read" worked.
+
+  </div>
+</div>
+
+---
+
+## The Fixes
+
+### Login Error Fix
+
+<Tabs>
+  <TabItem value="before" label="🔴 Before (Failing)" default>
+
+```dart title="lib/screens/login_screen.dart (current — buggy)"
+// BUG: Error text is NOT wrapped in a live region
+if (auth.error != null)
+  Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      auth.error!,
+      style: const TextStyle(color: AppColors.error),
+    ),
+  ),
+```
+
+  </TabItem>
+  <TabItem value="after" label="🟢 After (Fixed)">
+
+```dart title="lib/screens/login_screen.dart (fixed)"
+// highlight-start
+// FIX: Wrap error text in Semantics(liveRegion: true)
+if (auth.error != null)
+  Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Semantics(
+      liveRegion: true,
+      child: Text(
+        auth.error!,
+        style: const TextStyle(color: AppColors.error),
+      ),
+    ),
+  ),
+// highlight-end
+```
+
+  </TabItem>
+</Tabs>
+
+### Notifications Unread Count Fix
+
+<Tabs>
+  <TabItem value="before" label="🔴 Before (Failing)" default>
+
+```dart title="lib/screens/notifications_screen.dart (current — buggy)"
+// BUG: Unread count NOT in a live region
+Padding(
+  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+  child: Text(
+    '$unread unread',
+    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: AppColors.textSecondary,
+          fontWeight: FontWeight.w600,
+        ),
+  ),
+),
+```
+
+  </TabItem>
+  <TabItem value="after" label="🟢 After (Fixed)">
+
+```dart title="lib/screens/notifications_screen.dart (fixed)"
+// highlight-start
+// FIX: Wrap unread count in Semantics(liveRegion: true)
+Padding(
+  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+  child: Semantics(
+    liveRegion: true,
+    child: Text(
+      '$unread unread',
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w600,
+          ),
+    ),
+  ),
+),
+// highlight-end
+```
+
+  </TabItem>
+</Tabs>
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Do Not Edit the Source Files</div>
+  <p>As with previous chapters, the bugs remain in place so the tests continue to demonstrate real failures.</p>
+</div>
+
+---
+
+## Run the Tests
+
+```bash title="Terminal"
+flutter test test/accessibility/announcements_test.dart
+```
+
+Expected output:
+
+```
++4 -2: Some tests failed.
+```
+
+Four tests pass. Two tests fail:
+
+- **"error message is in a live region"** -- the Login error text lacks `SemanticsFlag.isLiveRegion`
+- **"unread count is a live region"** -- the Notifications unread count text lacks the same flag
+
+<div className="cb-callout cb-callout--green">
+  <div className="cb-callout__header">Checkpoint</div>
+  <p>You have tested two dynamic content scenarios that require live regions: an error message that appears after form submission, and a counter that updates when the user takes action. Both bugs leave screen reader users in the dark about important state changes.</p>
+</div>
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `Semantics(liveRegion: true)` | Marks a widget as a live region -- screen readers automatically announce content changes |
+| `SemanticsFlag.isLiveRegion` | The flag to check in tests to verify a widget is a live region |
+| `tester.getSemantics(finder)` | Returns the `SemanticsNode` for the matched widget -- requires `ensureSemantics()` |
+| `tester.ensureSemantics()` | Enables the semantics tree in tests (normally disabled for performance) |
+| WCAG 4.1.3 (Status Messages) | Status messages must be programmatically determinable without receiving focus |
+
+---
+
+## What's Next
+
+Live regions handle declarative content updates. In [Part 2: Dynamic Content](/chapters/announcements/dynamic), you will explore `SemanticsService.announce()` for imperative announcements and test the "Mark all read" flow end-to-end.

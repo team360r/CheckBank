@@ -1,0 +1,192 @@
+---
+sidebar_position: 2
+slug: /chapters/announcements/dynamic
+title: "Part 2: Dynamic Content"
+description: "Test dynamic content changes and imperative announcements"
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Part 2: Dynamic Content
+
+In Part 1, you tested declarative live regions -- widgets wrapped in `Semantics(liveRegion: true)` that announce changes automatically. Now you will learn about the imperative alternative and test a complete dynamic content flow.
+
+---
+
+## Live Regions vs. `SemanticsService.announce()`
+
+Flutter offers two mechanisms for screen reader announcements:
+
+### Declarative: Live Regions
+
+```dart
+Semantics(
+  liveRegion: true,
+  child: Text('$count items'),
+)
+```
+
+The screen reader monitors the live region widget. When its content changes (the text updates from "2 items" to "0 items"), the screen reader announces the new text. This is automatic -- you do not need to trigger anything manually.
+
+**Best for:** Persistent UI elements whose text changes over time (counters, status indicators, error messages that appear and disappear).
+
+### Imperative: `SemanticsService.announce()`
+
+```dart
+import 'package:flutter/semantics.dart';
+
+SemanticsService.announce(
+  'Transfer submitted successfully',
+  TextDirection.ltr,
+);
+```
+
+This sends a one-shot announcement to the screen reader immediately. It is not tied to any widget -- you can call it from anywhere in your code.
+
+**Best for:** One-time events that do not have a persistent widget (confirmation dialogs, snackbar messages, navigation transitions).
+
+### Choosing Between Them
+
+| Scenario | Approach | Reason |
+|----------|----------|--------|
+| Error message below a form | Live region | The error text is a persistent widget that appears/disappears |
+| Unread notification count | Live region | A counter that updates when the underlying data changes |
+| "Transfer submitted" snackbar | `SemanticsService.announce()` | A transient message -- the snackbar disappears after a few seconds |
+| Step change in a stepper | `SemanticsService.announce()` | A navigation event with no single text widget that captures the change |
+| Progress bar reaching 100% | `SemanticsService.announce()` | A milestone event -- you want to announce "Upload complete", not every percentage |
+
+<div className="cb-callout cb-callout--blue">
+  <div className="cb-callout__header">Snackbar Accessibility</div>
+  <p>Flutter's <code>SnackBar</code> already uses <code>SemanticsService.announce()</code> internally when it appears. So if you use <code>ScaffoldMessenger.showSnackBar()</code>, the screen reader will announce the snackbar content automatically. You do not need to add your own announcement for standard snackbars.</p>
+</div>
+
+---
+
+## Testing the "Mark All Read" Flow
+
+The Notifications screen has a complete dynamic content flow worth testing end-to-end:
+
+1. The screen loads with "2 unread" displayed
+2. The user taps the "Mark all read" button
+3. The count updates to "0 unread"
+4. The screen reader should announce the change (if the count is a live region)
+
+Our test from Part 1 already covers step 3 (verifying the count updates). The key accessibility test is whether the count widget is a live region -- because without that flag, step 4 never happens.
+
+### What the User Experiences
+
+**Without a live region:**
+- Screen reader user taps "Mark all read" (announced as the button's tooltip)
+- Nothing is announced
+- User has no idea whether the action succeeded
+- User must manually navigate back to the unread count text to read it
+
+**With a live region:**
+- Screen reader user taps "Mark all read"
+- Screen reader announces "0 unread" immediately
+- User knows the action succeeded without navigating anywhere
+
+This is the difference between a usable and an unusable experience.
+
+---
+
+## The Transfer Confirmation Dialog
+
+The Transfer screen's confirmation dialog is another scenario worth considering. When the user completes all three steps and taps "Submit", a dialog appears:
+
+```dart title="lib/screens/transfer_screen.dart (lines 56-82)"
+void _showConfirmation() {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Confirm transfer'),
+      content: Text(
+        'Send £${_amountController.text} to ${_recipientController.text}?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Transfer submitted')),
+            );
+          },
+          child: const Text('Confirm'),
+        ),
+      ],
+    ),
+  );
+}
+```
+
+Flutter's `showDialog` already handles focus management -- it traps focus inside the dialog and moves it to the dialog's surface. The `AlertDialog` title is announced by the screen reader when the dialog opens. This is correct behaviour out of the box.
+
+After the user taps "Confirm", the dialog closes and a `SnackBar` appears with "Transfer submitted". As noted earlier, Flutter's `SnackBar` uses `SemanticsService.announce()` internally, so this message is announced automatically.
+
+This is an example of the framework doing the right thing. Not every accessibility feature needs manual implementation -- knowing what Flutter handles automatically is just as important as knowing what it does not.
+
+---
+
+## When `SemanticsService.announce()` Is Needed
+
+Here is an example of when you would add an explicit announcement. If the Transfer screen's step advance needed to announce the new step (separate from the focus management bug covered in Chapter 5):
+
+```dart
+void _onStepContinue() {
+  if (_currentStep < 2) {
+    setState(() => _currentStep += 1);
+
+    // Announce the step change
+    final stepNames = ['Recipient', 'Amount', 'Reference'];
+    SemanticsService.announce(
+      'Step ${_currentStep + 1} of 3: ${stepNames[_currentStep]}',
+      TextDirection.ltr,
+    );
+  } else {
+    _showConfirmation();
+  }
+}
+```
+
+This would announce "Step 2 of 3: Amount" when the user advances from step 1. The announcement happens regardless of which widget has focus and does not depend on any live region in the widget tree.
+
+<div className="cb-callout cb-callout--amber">
+  <div className="cb-callout__header">Testing SemanticsService.announce()</div>
+  <p>Testing imperative announcements is harder than testing live regions. <code>SemanticsService.announce()</code> sends a platform message through the <code>SystemChannels.accessibility</code> channel. In widget tests, you can capture these messages by setting a mock handler on the channel. This is more advanced than the tests in this chapter and is covered in the integration testing chapters.</p>
+</div>
+
+---
+
+## Common Live Region Patterns
+
+| Pattern | Implementation |
+|---------|---------------|
+| Error message below a form field | Wrap conditional error `Text` in `Semantics(liveRegion: true)` |
+| Badge count (cart, notifications) | Wrap the count `Text` in `Semantics(liveRegion: true)` |
+| Loading indicator with text | Wrap "Loading..." / "Complete" text in a live region |
+| Toast / snackbar | Use Flutter's `SnackBar` (handles announcements internally) |
+| Navigation event | `SemanticsService.announce()` with a descriptive message |
+| Timer / countdown | `SemanticsService.announce()` at key milestones, not every second |
+
+---
+
+## Key Concepts
+
+| Concept | What It Does |
+|---------|-------------|
+| `Semantics(liveRegion: true)` | Declarative: screen reader monitors the widget and announces content changes automatically |
+| `SemanticsService.announce(message, direction)` | Imperative: sends a one-shot announcement to the screen reader immediately |
+| `SnackBar` | Flutter's snackbar already uses `SemanticsService.announce()` internally -- no manual work needed |
+| `showDialog` / `AlertDialog` | Flutter handles dialog focus trapping and title announcement automatically |
+| WCAG 4.1.3 (Status Messages) | Status changes must be announced to assistive technologies without requiring focus |
+
+---
+
+## What's Next
+
+Test your understanding of live regions and announcements in the [Chapter 6 Quiz](/chapters/announcements/quiz).
